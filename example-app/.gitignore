@@ -1,0 +1,6 @@
+node_modules/
+.next/
+runtime/
+public/assets/
+*.tsbuildinfo
+.env*

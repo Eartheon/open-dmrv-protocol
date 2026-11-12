@@ -1,0 +1,4 @@
+packages:
+  - '.'
+managePackageManagerVersions: false
+verifyDepsBeforeRun: false

@@ -1,0 +1,25 @@
+{
+    "singleQuote": true,
+    "tabWidth": 4,
+    "semi": true,
+    "trailingComma": "es5",
+    "printWidth": 160,
+    "arrowParens": "always",
+    "endOfLine": "lf",
+    "bracketSpacing": true,
+    "useTabs": false,
+    "jsxSingleQuote": true,
+    "quoteProps": "as-needed",
+    "files": [
+        ".tsx",
+        ".ts",
+        ".jsx",
+        ".js",
+        ".json",
+        ".css",
+        ".scss",
+        ".md",
+        ".mdx",
+        ".html"
+    ]
+}

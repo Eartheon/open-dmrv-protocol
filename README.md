@@ -152,6 +152,12 @@ The revised discussion draft and initial specification will add:
 
 Until the first specification is published, this repository should not be treated as making a normative conformance claim.
 
+## Reference application
+
+The [Carbon Markets reference application](examples/carbon-market/README.md) demonstrates the five actions through eight role-specific interfaces, separately signed assurance objects, controlled evidence retrieval, Mapbox parcel selection and tamper exercises. The Digital Twins entry is reserved for a later example.
+
+The sample is educational and does not claim Gold Standard certification or normative protocol conformance. See its README for setup, methodology limits and test instructions.
+
 ## Links
 
 - [Protocol repository](https://github.com/Eartheon/open-dmrv-protocol)

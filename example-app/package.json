@@ -1,0 +1,21 @@
+{
+  "name": "@open-dmrv/example-app",
+  "version": "0.2.0",
+  "packageManager": "pnpm@11.1.2",
+  "private": true,
+  "type": "module",
+  "engines": { "node": ">=24.0.0" },
+  "scripts": {
+    "dev": "node scripts/dev.mjs",
+    "worker": "node --experimental-strip-types scripts/worker.ts",
+    "build": "node node_modules/next/dist/bin/next build --webpack",
+    "start": "node scripts/dev.mjs --production",
+    "test": "node --experimental-strip-types --test tests/*.test.ts",
+    "typecheck": "node node_modules/typescript/bin/tsc --noEmit",
+    "db:migrate": "node --experimental-strip-types scripts/migrate.ts",
+    "db:check": "node --experimental-strip-types scripts/database-check.ts",
+    "test:integration": "node --experimental-strip-types --test tests/database.integration.ts"
+  },
+  "dependencies": { "next": "16.4.3", "react": "19.2.4", "react-dom": "19.2.4", "mapbox-gl": "3.27.0", "pg": "8.20.0" },
+  "devDependencies": { "@types/node": "20.19.43", "@types/react": "19.2.17", "@types/react-dom": "19.2.3", "@types/geojson": "7946.0.16", "@types/pg": "8.10.2", "typescript": "5.9.3" }
+}
