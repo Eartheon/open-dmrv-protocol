@@ -6,6 +6,7 @@ import { roles, parcels, areaHa, methodology, actionRole } from '@/lib/model';
 import { journeySteps, roleForStep, stageIndex } from '@/lib/journey';
 import { correctionFailure, monitoringDraftFor, stepState } from '@/lib/journey-state';
 import type { MonitoringDraft } from '@/lib/journey-state';
+import { modalitiesOf } from '@/lib/monitoring';
 import { ontologyTerms } from '@/lib/semantics';
 import { FieldMap } from './field-map';
 import type { Doc, RoleId, Action } from '@/lib/model';
@@ -127,7 +128,7 @@ export function Home() {
                         <article>
                             <Pill>AVAILABLE</Pill>
                             <h3>Carbon Markets</h3>
-                            <p>Follow a soil-carbon claim from a real mapped location to an educational attestation. Measurements and parties are fictional.</p>
+                            <p>Follow field study or synthetic satellite evidence from a real mapped location to an educational attestation. Measurements and parties are fictional.</p>
                             <Link href='/projects/new' className='v-button'>
                                 Start the soil-carbon journey →
                             </Link>
@@ -455,7 +456,9 @@ export function Journey({ projectId }: { projectId: string }) {
         step = journeySteps.find((s) => s.id === stepId) || journeySteps[5];
     const { data, error, setError, refresh } = useProject(projectId, profile);
     const monitoring = monitoringDraftFor(data, projectId, editedMonitoring),
-        { samples, cloudCoverPercent: cloud } = monitoring;
+        { samples, cloudCoverPercent: cloud } = monitoring,
+        manualMonitoring = modalitiesOf(data?.current.monitor?.document || {}).manualStudy,
+        noModality = !monitoring.modalities.manualStudy && !monitoring.modalities.satelliteCapture;
     useEffect(() => {
         if (data && initial) {
             setStepId(data.project.next_action === 'complete' ? 'attest' : data.project.next_action);
@@ -501,7 +504,7 @@ export function Journey({ projectId }: { projectId: string }) {
             }
             const response = await call('/api/projects/' + projectId + '/sign', {
                 action: stepId,
-                values: { samples, cloudCoverPercent: cloud, netTCO2e: quantity === '' ? null : Number(quantity) },
+                values: { modalities: monitoring.modalities, samples, cloudCoverPercent: cloud, netTCO2e: quantity === '' ? null : Number(quantity) },
                 overrides,
             });
             setPrepared(response);
@@ -678,6 +681,16 @@ export function Journey({ projectId }: { projectId: string }) {
                             )}
                             {stepId === 'monitor' && (
                                 <>
+                                    <fieldset className='v-card v-modality-choices' disabled={!canAct}>
+                                        <div style={{ fontWeight: 'bold' }}>How will you monitor this field?</div>
+                                        <p>Choose either method or combine them. Only selected evidence is captured and signed.</p>
+                                        <label><input type='checkbox' checked={monitoring.modalities.manualStudy} onChange={e => { setEditedMonitoring({ ...monitoring, modalities: { ...monitoring.modalities, manualStudy: e.target.checked } }); setPrepared(null); }} />
+                                            <span><b>Manual field study</b><small>Paired soil samples and a practice record for the educational carbon calculation.</small></span></label>
+                                        <label><input type='checkbox' checked={monitoring.modalities.satelliteCapture} onChange={e => { setEditedMonitoring({ ...monitoring, modalities: { ...monitoring.modalities, satelliteCapture: e.target.checked } }); setPrepared(null); }} />
+                                            <span><b>Satellite image capture</b><small>A synthetic image and acquisition record. Imagery alone produces an observation claim.</small></span></label>
+                                        {noModality && <p role='alert' className='v-error'>Select at least one monitoring method.</p>}
+                                    </fieldset>
+                                    {monitoring.modalities.manualStudy && (
                                     <section className='v-lab-panel'>
                                         <div className='v-lab-title'>
                                             <div>
@@ -731,30 +744,25 @@ export function Journey({ projectId }: { projectId: string }) {
                                                 Sampling <b>{samples.length} paired samples</b>
                                             </span>
                                         </div>
-                                        <label className='v-inline-field'>
-                                            Satellite cloud cover %
-                                            <input
-                                                type='number'
-                                                min='0'
-                                                max='100'
-                                                value={cloud}
-                                                disabled={!canAct}
-                                                onChange={(e) => {
-                                                    setEditedMonitoring({ ...monitoring, cloudCoverPercent: Number(e.target.value) });
-                                                    setPrepared(null);
-                                                }}
-                                            />
-                                        </label>
                                         <p className='v-small'>
-                                            The signed manifest will reference a CSV, field boundary, practice record and satellite context. Each asset gets a
-                                            custodian signature and a byte hash.
+                                            AgrO describes the practice equipment; ENVO describes the sampled soil. The study produces a signed CSV and practice record.
                                         </p>
                                     </section>
+                                    )}
+                                    {monitoring.modalities.satelliteCapture && <section className='v-card v-satellite-panel'>
+                                        <Pill tone='amber'>SYNTHETIC CAPTURE</Pill>
+                                        <h2>Satellite image capture</h2>
+                                        <p>Request a simulated Sentinel-2 product over the registered field. RESEO describes the requested product, source and image types.</p>
+                                        <label className='v-inline-field'>Satellite cloud cover %<input type='number' min='0' max='100' value={cloud} disabled={!canAct} onChange={e => { setEditedMonitoring({ ...monitoring, cloudCoverPercent: Number(e.target.value) }); setPrepared(null); }} /></label>
+                                        <p className='v-small'>Publishing creates an actual PNG fixture and signed capture metadata. This is a simulation; no satellite is tasked. A cloud cover above 20% fails independent review.</p>
+                                    </section>}
                                     <FieldMap selected={data.project.parcel_id} compact />
+                                    {doc && !canAct && <AssetBrowser data={data} profile={profile} />}
                                 </>
                             )}
                             {stepId === 'report' && (
                                 <>
+                                    {manualMonitoring ? (
                                     <section className='v-ledger-sheet'>
                                         <div className='v-ledger-header'>
                                             <span>CARBON ANALYTICS / CALCULATION WORKSHEET</span>
@@ -790,6 +798,11 @@ export function Journey({ projectId }: { projectId: string }) {
                                             request a correction.
                                         </p>
                                     </section>
+                                    ) : <section className='v-card v-satellite-panel'>
+                                        <Pill>IMAGE OBSERVATION CLAIM</Pill><h2>Report the captured scene.</h2>
+                                        <p>Retrieve the synthetic PNG and capture metadata. The claim records clear-scene coverage from the selected capture; no soil-carbon quantity is inferred.</p>
+                                        <p className='v-small'>Independent review checks image bytes, product/source relationships and the reproduced coverage value.</p>
+                                    </section>}
                                     <AssetBrowser data={data} profile={profile} />
                                 </>
                             )}
@@ -810,7 +823,7 @@ export function Journey({ projectId }: { projectId: string }) {
                                                 'Validate every upstream signature and revision digest',
                                                 'Retrieve the original assets and methodology',
                                                 'Compare exact file hashes',
-                                                'Reproduce the carbon calculation',
+                                                manualMonitoring ? 'Reproduce the carbon calculation' : 'Reproduce the synthetic scene-coverage observation',
                                                 'Assess the demo quality profile',
                                             ].map((s, i) => (
                                                 <li key={s}>
@@ -848,7 +861,7 @@ export function Journey({ projectId }: { projectId: string }) {
                                         <span>{data.subject.name} · Thanjavur, Tamil Nadu</span>
                                         <strong>
                                             {data.current.report?.document.statement.object.value?.toFixed(2) || '—'}
-                                            <small>tCO₂e · illustrative</small>
+                                            <small>{manualMonitoring ? 'tCO₂e · illustrative' : '% clear scene coverage · synthetic'}</small>
                                         </strong>
                                         <p>
                                             Bind the exact claim, accepted independent verification, subject and methodology. The qualifications remain part of
@@ -922,7 +935,7 @@ export function Journey({ projectId }: { projectId: string }) {
                                         )}
                                     </details>
                                     <div className='v-sign-actions'>
-                                        <button className='v-button' disabled={busy} onClick={prepare}>
+                                        <button className='v-button' disabled={busy || (stepId === 'monitor' && noModality)} onClick={prepare}>
                                             {busy ? 'Preparing…' : 'Review & sign /' + stepId} →
                                         </button>
                                         {prepared && (
@@ -1163,7 +1176,7 @@ function AssetBrowser({ data, profile, showHistory = false }: { data: Doc; profi
             <div className='v-asset-list'>
                 {registered.map((a: Doc) => (
                     <button disabled={busy} key={a.id} onClick={() => load(a)}>
-                        <span>{a.media_type === 'text/csv' ? 'CSV' : a.name.includes('methodology') ? 'METHOD' : 'JSON'}</span>
+                        <span>{a.media_type === 'image/png' ? 'IMAGE' : a.media_type === 'text/csv' ? 'CSV' : a.name.includes('methodology') ? 'METHOD' : 'JSON'}</span>
                         <div>
                             <b>
                                 {a.name}
@@ -1186,7 +1199,7 @@ function AssetBrowser({ data, profile, showHistory = false }: { data: Doc; profi
             {preview && (
                 <div className='v-source-preview'>
                     <Pill>HASH VERIFIED</Pill>
-                    <pre>{preview.content}</pre>
+                            {preview.mediaType === 'image/png' && preview.encoding === 'base64' ? <figure className='v-capture-preview'><img alt='Synthetic satellite image capture — not a real acquisition' src={'data:image/png;base64,' + preview.content} /><figcaption>Synthetic satellite image · exact bytes hash-verified · no carbon estimate inferred</figcaption></figure> : <pre>{preview.content}</pre>}
                 </div>
             )}
         </section>
@@ -1416,7 +1429,7 @@ function OntologyView() {
         <section className='v-card'>
             <div className='v-card-head'>
                 <div>
-                    <p className='eyebrow'>EXACT TERMS USED IN THE CLAIM</p>
+                    <p className='eyebrow'>ONTOLOGY TERMS ACROSS MONITORING AND ASSURANCE</p>
                     <h2>AgrO · ENVO · RESEO</h2>
                 </div>
                 <Pill tone='neutral'>JSON-LD 1.1</Pill>
@@ -1453,8 +1466,7 @@ function OntologyView() {
                 </table>
             </div>
             <p className='v-small'>
-                AgrO types the agricultural equipment. ENVO types the sampled environmental material. RESEO types the satellite product and source relationship.
-                Protocol and carbon-calculation fields use the explicit dMRV demo vocabulary. Full OWL reasoning is not performed.
+                Monitoring requests use AgrO for selected field-study equipment and ENVO for the target soil. Satellite requests specify RESEO product, source and image types as requirements. Produced manifests and claims describe the resulting synthetic product, image and snapshot; the paths above refer to those results. Verification and attestation preserve those relationships. Only terms relevant to the selected modalities are included in each record. The application validates its monitoring profile; full OWL reasoning is not performed.
             </p>
         </section>
     );

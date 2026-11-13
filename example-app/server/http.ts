@@ -6,7 +6,7 @@ import type { Doc, RoleId, Action } from '../lib/model.ts';
 import { isAction, isProfile, fail, ProtocolError, ack, uid, sign, verifySigned, timestamp } from './protocol.ts';
 import { projectFor, createProject, authorise, projectSnapshot, audit } from './repository.ts';
 import { prepareRequest, acceptRequest, acceptCallback } from './workflow.ts';
-import { readAndCheckAsset, logExchange, retrieveAsset } from './assets.ts';
+import { readAssetBytes, logExchange, retrieveAsset } from './assets.ts';
 
 async function authenticate(request: Request): Promise<RoleId> {
     if (request.headers.get('authorization') === 'Bearer ' + serviceCredential()) {
@@ -93,7 +93,8 @@ export async function handle(request: Request) {
             if (operation === 'asset' && request.method === 'POST') {
                 const asset = (await pool().query('SELECT * FROM dmrv.assets WHERE id=$1 AND project_id=$2', [body.assetId, projectId])).rows[0];
                 if (!asset) fail('EVIDENCE_UNAVAILABLE', 'Unknown project asset.', 404, 'monitor');
-                return json({ assetId: asset.id, name: asset.name, content: await retrieveAsset(asset.descriptor, profile, projectId), digest: asset.digest });
+                const content = await retrieveAsset(asset.descriptor, profile, projectId);
+                return json({ assetId: asset.id, name: asset.name, mediaType: asset.media_type, encoding: Buffer.isBuffer(content) ? 'base64' : 'utf8', content: Buffer.isBuffer(content) ? content.toString('base64') : content, digest: asset.digest });
             }
             if (operation === 'consent' && request.method === 'POST') return json(await authorise(projectId, profile), 201);
             if (operation === 'sign' && request.method === 'POST') {
@@ -220,8 +221,8 @@ export async function handle(request: Request) {
             if (new Date(g.expires_at).getTime() <= Date.now())
                 fail('ACCESS_GRANT_EXPIRED', 'Request a fresh evidence grant; this one has expired.', 403, 'verify');
             await verifySigned(g.document, asset.custodian.split('/').pop());
-            const content = await readAndCheckAsset(asset);
-            const result = { assetId: asset.id, mediaType: asset.media_type, digest: asset.digest, content };
+            const bytes = await readAssetBytes(asset), binary = asset.media_type === 'image/png';
+            const result = { assetId: asset.id, mediaType: asset.media_type, digest: asset.digest, encoding: binary ? 'base64' : 'utf8', content: bytes.toString(binary ? 'base64' : 'utf8') };
             await logExchange(asset.project_id, profile, 'GET', path, { grantId: g.id }, result, 200);
             return json(result);
         }

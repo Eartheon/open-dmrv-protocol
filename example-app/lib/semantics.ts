@@ -9,6 +9,11 @@ export const claimContext = {
     reseo: 'https://w3id.org/reseo#',
     issuer: { '@id': 'dmrv:issuer', '@type': '@id' },
     hasDataSource: { '@id': 'reseo:hasDataSource' },
+    hasProduct: { '@id': 'reseo:hasProduct' },
+    cloudCoverPercent: { '@id': 'reseo:cloudcoverpercentage' },
+    requestedProductType: { '@id': 'dmrv:requestedProductType', '@type': '@id' },
+    requestedDataSourceType: { '@id': 'dmrv:requestedDataSourceType', '@type': '@id' },
+    requestedImageType: { '@id': 'dmrv:requestedImageType', '@type': '@id' },
 };
 export const ontologyTerms = [
     {
@@ -61,26 +66,36 @@ export const ontologyTerms = [
         source: 'https://github.com/KhaosResearch/REmoteSEnsingOntology',
         license: 'MIT',
     },
+    { ontology: 'RESEO', term: 'Sentinel 2 satellite', iri: 'https://w3id.org/reseo#Sentinel2', prefix: 'reseo:Sentinel2', path: '/remoteSensingContext/product/hasDataSource/type', release: '1.0', source: 'https://github.com/KhaosResearch/REmoteSEnsingOntology', license: 'MIT' },
+    { ontology: 'RESEO', term: 'Raster image', iri: 'https://w3id.org/reseo#RasterImage', prefix: 'reseo:RasterImage', path: '/remoteSensingContext/product/image/type', release: '1.0', source: 'https://github.com/KhaosResearch/REmoteSEnsingOntology', license: 'MIT' },
+    { ontology: 'RESEO', term: 'Snapshot', iri: 'https://w3id.org/reseo#Snapshot', prefix: 'reseo:Snapshot', path: '/remoteSensingContext/snapshot/type', release: '1.0', source: 'https://github.com/KhaosResearch/REmoteSEnsingOntology', license: 'MIT' },
+    { ontology: 'RESEO', term: 'Has product', iri: 'https://w3id.org/reseo#hasProduct', prefix: 'reseo:hasProduct', path: '/remoteSensingContext/snapshot/hasProduct', release: '1.0', source: 'https://github.com/KhaosResearch/REmoteSEnsingOntology', license: 'MIT' },
+    { ontology: 'RESEO', term: 'Cloud cover percentage', iri: 'https://w3id.org/reseo#cloudcoverpercentage', prefix: 'reseo:cloudcoverpercentage', path: '/remoteSensingContext/snapshot/cloudCoverPercent', release: '1.0', source: 'https://github.com/KhaosResearch/REmoteSEnsingOntology', license: 'MIT' },
 ] as const;
-export function claimSemantics(subjectId: string, productId: string) {
+export function claimSemantics(subjectId: string, productId: string, modalities = { manualStudy: true, satelliteCapture: true }, depths = [30]) {
     return {
         '@context': claimContext,
-        agronomicContext: {
+        ...(modalities.manualStudy ? { agronomicContext: {
             equipment: { id: subjectId + ':drill', type: 'agro:00000416', label: 'Demonstration no-till drill' },
             practice: {
                 id: subjectId + ':practice',
                 type: 'dmrv:NoTillPractice',
                 label: 'Illustrative reduced soil disturbance; practice class is a demo extension, not an invented AgrO term.',
             },
-        },
-        environmentalContext: { material: { id: subjectId + ':soil', type: 'envo:00001998', label: 'Soil' }, samplingDepth: { value: 30, unit: 'cm' } },
-        remoteSensingContext: {
+        } } : {}),
+        environmentalContext: { material: { id: subjectId + ':soil', type: 'envo:00001998', label: 'Soil' }, ...(modalities.manualStudy ? { samplingDepths: depths.map(value => ({ value, unit: 'cm' })) } : {}) },
+        ...(modalities.satelliteCapture ? { remoteSensingContext: {
             product: {
                 id: productId,
                 type: 'reseo:Sentinel2Product',
-                hasDataSource: { id: productId + ':source', type: 'reseo:DataSource', label: 'Synthetic Sentinel-2 MSI context record' },
+                hasDataSource: { id: productId + ':source', type: ['reseo:DataSource', 'reseo:Sentinel2'], label: 'Synthetic Sentinel-2 MSI source' },
             },
-        },
-        ontologyReferences: ontologyTerms,
+        } } : {}),
+        ontologyReferences: ontologyTerms.filter(t => t.ontology === 'ENVO' || (t.ontology === 'AgrO' ? modalities.manualStudy : modalities.satelliteCapture)),
     };
+}
+
+export function semanticFields(document: Record<string, any>) {
+    return Object.fromEntries(['@context', 'agronomicContext', 'environmentalContext', 'remoteSensingContext', 'ontologyReferences']
+        .filter(key => document[key] !== undefined).map(key => [key, document[key]]));
 }

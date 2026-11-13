@@ -1,5 +1,7 @@
 import { stageIndex } from './journey.ts';
 import type { Doc } from './model.ts';
+import { defaultSamples, observationInputs } from './monitoring.ts';
+import type { Modalities } from './monitoring.ts';
 
 export type SoilSample = {
     sample: string;
@@ -9,28 +11,27 @@ export type SoilSample = {
     depthCm: number;
     rockFraction: number;
 };
-export type MonitoringDraft = { sourceId: string; samples: SoilSample[]; cloudCoverPercent: number };
+export type MonitoringDraft = { sourceId: string; samples: SoilSample[]; cloudCoverPercent: number; modalities: Modalities };
 
 // Messages arrive newest first. Restore the last submission, including observations
 // that failed validation, so a correction starts with what the user submitted.
 export function savedMonitoringDraft(data: Doc | null, projectId: string): MonitoringDraft {
     const request = data?.messages.find((m: Doc) => m.direction === 'request' && m.action === 'monitor');
-    const measurements = request?.envelope.message.observationRequest?.measurements;
-    if (measurements) {
+    const observation = request?.envelope.message.observationRequest;
+    if (observation) {
+        const inputs = observationInputs(observation);
         return {
             sourceId: projectId + ':' + request.message_id,
-            samples: measurements.samples.map((sample: SoilSample) => ({ ...sample })),
-            cloudCoverPercent: measurements.cloudCoverPercent,
+            samples: inputs.samples.map((sample: SoilSample) => ({ ...sample })),
+            cloudCoverPercent: inputs.cloudCoverPercent,
+            modalities: { ...inputs.modalities },
         };
     }
     return {
         sourceId: projectId + ':initial',
-        samples: [
-            { sample: 'S01', baselineSocPct: 1.1, currentSocPct: 1.2, bulkDensity: 1.3, depthCm: 30, rockFraction: 0.05 },
-            { sample: 'S02', baselineSocPct: 1.15, currentSocPct: 1.25, bulkDensity: 1.3, depthCm: 30, rockFraction: 0.05 },
-            { sample: 'S03', baselineSocPct: 1.12, currentSocPct: 1.22, bulkDensity: 1.3, depthCm: 30, rockFraction: 0.05 },
-        ],
+        samples: defaultSamples(),
         cloudCoverPercent: 8,
+        modalities: { manualStudy: true, satelliteCapture: true },
     };
 }
 

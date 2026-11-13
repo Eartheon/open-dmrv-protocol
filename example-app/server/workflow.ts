@@ -21,7 +21,9 @@ import {
 } from './protocol.ts';
 import { roles, party, agent, methodology, actionRole, outputKey, areaHa } from '../lib/model.ts';
 import { journeySteps, stageIndex, roleForStep } from '../lib/journey.ts';
-import { claimSemantics } from '../lib/semantics.ts';
+import { semanticFields } from '../lib/semantics.ts';
+import { observationRequest, modalitiesOf, defaultSamples, satelliteProfile, monitoringProfile } from '../lib/monitoring.ts';
+import { monitoredEvidence, assessEvidence, evidenceStatement } from './monitoring.ts';
 import type { Doc, RoleId, Action } from '../lib/model.ts';
 
 export async function prepareRequest(projectId: string, profile: RoleId, action: Action, values: Doc = {}, overrides: Doc = {}) {
@@ -58,15 +60,7 @@ export async function prepareRequest(projectId: string, profile: RoleId, action:
             { kind: 'MonitoredSubject', object: { id: subject.id, name: subject.name, geometry: subject.geometry, crs: subject.crs } },
             { kind: 'SubjectAuthorisation', object: inputs.consent },
         ];
-    if (action === 'monitor')
-        base.observationRequest = {
-            phenomena: ['http://purl.obolibrary.org/obo/ENVO_00001998'],
-            spatial: { geometry: subject.geometry, crs: subject.crs },
-            temporal: { start: '2024-01-01T00:00:00Z', end: '2025-12-31T23:59:59Z' },
-            measurementProvider: party('measurement'),
-            methodologyReference: { id: methodology.id, version: methodology.version },
-            measurements: { samples: values.samples || defaultSamples(), cloudCoverPercent: values.cloudCoverPercent ?? 8 },
-        };
+    if (action === 'monitor') base.observationRequest = observationRequest(subject, party('measurement'), values);
     if (action === 'report') {
         base.claimType = 'ObservationClaim';
         base.evidence = resources.monitor ? [reference(resources.monitor.document)] : [];
@@ -75,7 +69,7 @@ export async function prepareRequest(projectId: string, profile: RoleId, action:
     }
     if (action === 'verify') {
         base.claim = resources.report ? reference(resources.report.document) : null;
-        base.verificationScope = ['authenticity', 'evidenceIntegrity', 'calculation', 'demoFunctionProfile'];
+        base.verificationScope = ['authenticity', 'evidenceIntegrity', modalitiesOf(resources.monitor?.document || {}).manualStudy ? 'calculation' : 'satelliteObservation', 'demoFunctionProfile'];
         base.procedure = 'urn:open-dmrv:demo:verification-procedure:v2';
     }
     if (action === 'attest') {
@@ -86,13 +80,7 @@ export async function prepareRequest(projectId: string, profile: RoleId, action:
     if (overrides.assetOverrides) base.assetOverrides = overrides.assetOverrides;
     return { endpoint: '/' + action, envelope: makeEnvelope(action, profile, p, base) };
 }
-export function defaultSamples() {
-    return [
-        { sample: 'S01', baselineSocPct: 1.1, currentSocPct: 1.2, bulkDensity: 1.3, depthCm: 30, rockFraction: 0.05 },
-        { sample: 'S02', baselineSocPct: 1.15, currentSocPct: 1.25, bulkDensity: 1.3, depthCm: 30, rockFraction: 0.05 },
-        { sample: 'S03', baselineSocPct: 1.12, currentSocPct: 1.22, bulkDensity: 1.3, depthCm: 30, rockFraction: 0.05 },
-    ];
-}
+export { defaultSamples };
 export async function acceptRequest(action: Action, profile: RoleId, envelope: Doc, idempotency?: string) {
     validateEnvelopeShape(envelope, action, profile);
     await verifySigned(envelope, profile, 'authentication', envelope.context.messageId);
@@ -105,6 +93,8 @@ export async function acceptRequest(action: Action, profile: RoleId, envelope: D
             if (existing.digest !== digest(envelope)) fail('CONFLICTING_MESSAGE', 'This message ID was already accepted with different bytes.', 409, action);
             return existing.acknowledgement;
         }
+        if (action === 'monitor' && envelope.message.observationRequest?.semanticProfile !== monitoringProfile)
+            fail('ONTOLOGY_PROFILE_REQUIRED', 'New monitoring requests must declare the supported ontology profile and selected observation modalities.', 400, 'monitor');
         if (p.pending_message_id) fail('BUSY', 'The previous request is still awaiting its callback.', 409, p.next_action);
         if (
             p.next_action !== action ||
@@ -179,7 +169,7 @@ async function loadEvidence(project: Doc, current: Doc, profile: RoleId, envelop
     await verifySigned(reg, 'registrar');
     const manifest = await retrieveResource(current.monitor.id, profile, current.monitor.digest);
     await verifySigned(manifest, 'measurement');
-    const content: Record<string, string> = {};
+    const content: Record<string, string | Buffer> = {};
     for (const asset of [...manifest.assets, reg.methodologyReference.asset]) {
         let raw = await retrieveAsset(asset, profile, project.id);
         if (envelope.message.assetOverrides?.[asset.id] !== undefined) {
@@ -189,11 +179,10 @@ async function loadEvidence(project: Doc, current: Doc, profile: RoleId, envelop
         }
         content[asset.name] = raw;
     }
-    const method = JSON.parse(content['methodology-profile.json']);
+    const method = JSON.parse(content['methodology-profile.json'].toString());
     if (method.id !== 'urn:open-dmrv:demo:soil-stock:v1' || method.version !== '1.0')
         fail('METHODOLOGY_MISMATCH', 'The retrieved calculation profile does not match registration.', 422, 'register');
-    const calculation = calculate(content['soil-samples.csv'], Number(reg.subject.spatial.areaHa));
-    return { manifest, reg, content, calculation };
+    return { manifest, reg, content, ...assessEvidence(manifest, content, Number(reg.subject.spatial.areaHa)) };
 }
 import { hash } from './protocol.ts';
 const digestRaw = (value: string) => hash(value).toString('hex');
@@ -225,6 +214,7 @@ async function buildOutput(project: Doc, envelope: Doc, current: Doc): Promise<{
                     activityModuleReference: 'https://globalgoals.goldstandard.org/402-4-luf-agr-am-soc-module-zero-tillage/',
                     calculationProfile:
                         'Illustrative fixed-depth SOC stock difference; equal sample weights, emissions 0.3 tCO2e/ha, leakage 0.1 tCO2e/ha, buffer 20%.',
+                    satelliteObservationProfile: { id: satelliteProfile, version: '1.0', metric: 'Synthetic clear-scene coverage = 100 - cloud cover; no soil-carbon quantification.' },
                     certificationEligible: false,
                     limitations: methodology.limitation,
                 },
@@ -248,213 +238,73 @@ async function buildOutput(project: Doc, envelope: Doc, current: Doc): Promise<{
                 authorisation: reference(current.consent.document),
                 participants: roles.map((r) => ({ partyId: party(r.id), agentId: agent(r.id), role: r.role })),
                 methodologyReference: { ...methodology, asset: method.descriptor },
-                functionProfile: { id: 'urn:open-dmrv:demo:soil-quality:v1', version: '1.0', maxCloudCoverPercent: 20, minimumSamples: 3 },
+                functionProfile: { id: 'urn:open-dmrv:demo:monitoring-quality:v1', version: '1.0',
+                    manualStudy: { appliesWhen: 'modalities.manualStudy', minimumSamples: 3 },
+                    satelliteCapture: { appliesWhen: 'modalities.satelliteCapture', maxCloudCoverPercent: 20, syntheticOnly: true } },
             },
             assets,
         };
     }
     if (action === 'monitor') {
         await retrieveAsset(current.register.document.methodologyReference.asset, profile, project.id);
-        const observation = envelope.message.observationRequest,
-            samples = observation?.measurements?.samples,
-            cloud = observation?.measurements?.cloudCoverPercent;
-        if (!Array.isArray(samples) || samples.length > 100 || !Number.isFinite(cloud) || cloud < 0 || cloud > 100)
-            fail('INVALID_OBSERVATIONS', 'Provide numeric soil samples and cloud cover between 0 and 100%.', 422, 'monitor');
-        const csv =
-            'sample,baselineSocPct,currentSocPct,bulkDensity,depthCm,rockFraction\n' +
-            samples
-                .map((s: Doc, i: number) =>
-                    ['S' + String(i + 1).padStart(2, '0'), s.baselineSocPct, s.currentSocPct, s.bulkDensity, s.depthCm, s.rockFraction].join(',')
-                )
-                .join('\n') +
-            '\n';
-        calculate(csv, Number(subject.area_ha));
-        assets.push(prepareAsset(project.id, 'soil-samples.csv', 'text/csv', csv));
-        assets.push(
-            prepareAsset(
-                project.id,
-                'field-boundary.geojson',
-                'application/geo+json',
-                JSON.stringify(
-                    { type: 'Feature', geometry: subject.geometry, properties: { id: subject.id, name: subject.name, demonstrationBoundary: true } },
-                    null,
-                    2
-                )
-            )
-        );
-        assets.push(
-            prepareAsset(
-                project.id,
-                'practice-record.json',
-                'application/json',
-                JSON.stringify(
-                    {
-                        activityId: project.activity_id,
-                        practice: 'Illustrative no-till drill operation',
-                        equipmentType: 'http://purl.obolibrary.org/obo/AGRO_00000416',
-                        controllerAuthorisation: reference(current.consent.document),
-                        synthetic: true,
-                    },
-                    null,
-                    2
-                )
-            )
-        );
-        assets.push(
-            prepareAsset(
-                project.id,
-                'satellite-context.json',
-                'application/json',
-                JSON.stringify(
-                    {
-                        id: uid(),
-                        type: 'https://w3id.org/reseo#Sentinel2Product',
-                        platform: 'Sentinel-2',
-                        instrument: 'MSI',
-                        productLevel: 'L2A',
-                        nativeResolutionM: 10,
-                        processingResolutionM: 10,
-                        cloudCoverPercent: cloud,
-                        acquiredAt: '2025-12-15T05:10:00Z',
-                        synthetic: true,
-                        limitation: 'Supporting metadata only. No satellite raster was ingested and SOC is not inferred from this record.',
-                    },
-                    null,
-                    2
-                )
-            )
-        );
-        return {
-            draft: {
-                ...base,
-                type: 'EvidenceManifest',
-                provider: party(profile),
-                agent: agent(profile),
-                subjectId: subject.id,
-                spatial: subjectDoc.spatial,
-                temporal: observation.temporal,
-                assets: assets.map((a) => a.descriptor),
-                modalityDetails: {
-                    manualStudyProfile: {
-                        studyDesign: 'Three synthetic paired soil samples; equal weights',
-                        protocolReference: 'urn:open-dmrv:demo:soil-stock:v1',
-                        sampleSize: samples.length,
-                        depthCm: 30,
-                        chainOfCustody: 'DEMO-LAB-' + project.id.slice(0, 8),
-                        consentOrAuthority: current.consent.id,
-                        qualityControl: ['synthetic laboratory QC example'],
-                    },
-                },
-                satelliteQuality: { cloudCoverPercent: cloud, maxCloudCoverPercent: 20 },
-                registration: reference(current.register.document),
-            },
-            assets,
-        };
+        return monitoredEvidence(project, subject, current.register.document, envelope, base);
     }
     const evidence = await loadEvidence(project, current, profile, envelope);
+    const manual = evidence.modalities.manualStudy;
+    const method = manual ? evidence.reg.methodologyReference : { id: satelliteProfile, version: '1.0', asset: evidence.reg.methodologyReference.asset,
+        limitation: 'Synthetic image observation only; no carbon removal is quantified.' };
     if (action === 'report') {
-        const quantity = envelope.message.claimDraft?.netTCO2e ?? evidence.calculation.netTCO2e;
-        if (!Number.isFinite(quantity) || quantity < 0) fail('INVALID_QUANTITY', 'The claimed quantity must be a non-negative number.', 422, 'report');
-        return {
-            draft: {
-                ...base,
-                ...claimSemantics(subject.id, evidence.manifest.assets.find((a: Doc) => a.name === 'satellite-context.json').id),
-                type: ['Claim', 'ObservationClaim'],
-                issuer: party(profile),
-                subject: { id: subject.id, type: 'MonitoredSubject' },
-                spatial: subjectDoc.spatial,
-                temporal: evidence.manifest.temporal,
-                statement: { predicate: 'dmrv:hasNetCarbonRemoval', object: { value: quantity, unit: 'tCO2e', calculation: evidence.calculation } },
-                evidence: [{ manifestId: evidence.manifest.id, ...reference(evidence.manifest) }],
-                methodologyReference: evidence.reg.methodologyReference,
-                conformsTo: ['urn:open-dmrv:demo:soil-stock:v1'],
-                quality: { sampleCount: evidence.calculation.samples, cloudCoverPercent: evidence.manifest.satelliteQuality.cloudCoverPercent },
-                lineage: { derivedFrom: evidence.manifest.assets.map((a: Doc) => a.id), process: 'urn:open-dmrv:demo:fixed-depth-calculation:v1' },
-                limitations: [
-                    methodology.limitation,
-                    'Synthetic evidence; before/after samples alone do not establish additionality. Fixed deductions are teaching assumptions, not Gold Standard defaults.',
-                    'Satellite metadata provide context; no SOC estimate is inferred from imagery.',
-                ],
-            },
-            assets,
-        };
+        return { draft: {
+            ...base, ...evidence.semantics, type: ['Claim', 'ObservationClaim'], modalities: evidence.modalities,
+            claimKind: manual ? 'soil-carbon' : 'satellite-observation', issuer: party(profile), subject: { id: subject.id, type: 'MonitoredSubject' },
+            spatial: subjectDoc.spatial, temporal: evidence.manifest.temporal,
+            statement: evidenceStatement(evidence, envelope.message.claimDraft?.netTCO2e ?? null),
+            evidence: [{ manifestId: evidence.manifest.id, ...reference(evidence.manifest) }], methodologyReference: method,
+            conformsTo: [manual ? 'urn:open-dmrv:demo:soil-stock:v1' : satelliteProfile],
+            quality: { ...(evidence.calculation ? { sampleCount: evidence.calculation.samples } : {}), ...(evidence.capture ? { cloudCoverPercent: evidence.capture.snapshot.cloudCoverPercent } : {}) },
+            lineage: { derivedFrom: evidence.manifest.assets.map((a: Doc) => a.id), process: manual ? 'urn:open-dmrv:demo:fixed-depth-calculation:v1' : satelliteProfile },
+            limitations: [manual ? methodology.limitation : 'Synthetic image observation; no soil-carbon measurement or credit is claimed.',
+                evidence.modalities.satelliteCapture ? 'The satellite image is synthetic. No SOC estimate is inferred from imagery.' : 'No satellite capture was selected or used.',
+                'All evidence is educational; no programme certification is implied.'],
+        }, assets };
     }
     const claim = await retrieveResource(current.report.id, profile, current.report.digest);
     await verifySigned(claim, 'reporter');
     const findings: Doc[] = [
         { code: 'SIGNATURES_VALID', status: 'passed', message: 'All upstream signatures, key assignments and revision digests are valid.' },
-        {
-            code: 'ASSET_INTEGRITY_VALID',
-            status: 'passed',
-            message: 'Source assets and methodology retrieved using requester-bound signed access grants; exact bytes match.',
-        },
+        { code: 'ASSET_INTEGRITY_VALID', status: 'passed', message: 'Selected evidence and methodology were retrieved with signed grants; exact byte hashes match.' },
     ];
-    if (claim.issuer === party(profile))
-        fail('INDEPENDENCE_REQUIREMENT_FAILED', 'The reporter and verifier must be different accountable parties.', 422, 'register');
+    if (claim.issuer === party(profile)) fail('INDEPENDENCE_REQUIREMENT_FAILED', 'The reporter and verifier must be different accountable parties.', 422, 'register');
     if (claim.subject.id !== subject.id || digest(claim.spatial) !== digest(subjectDoc.spatial) || claim.evidence[0].digest !== current.monitor.digest)
         fail('REFERENCE_MISMATCH', 'The claim does not bind the current subject and monitoring revision.', 422, 'report');
-    if (
-        Math.abs(claim.statement.object.value - evidence.calculation.netTCO2e) > 0.0001 ||
-        digest(claim.statement.object.calculation) !== digest(evidence.calculation)
-    )
-        fail(
-            'CALCULATION_MISMATCH',
-            'The reporter signed a quantity or calculation that differs from the original evidence.',
-            422,
-            'report',
-            '/statement/object'
-        );
-    findings.push({ code: 'CALCULATION_REPRODUCED', status: 'passed', message: 'The independent calculation matches the signed claim.' });
-    if (evidence.manifest.satelliteQuality.cloudCoverPercent > 20)
-        fail('QUALITY_INSUFFICIENT', 'The satellite context exceeds the demo Function Profile limit of 20% cloud cover.', 422, 'monitor');
-    findings.push({ code: 'FUNCTION_PROFILE_MET', status: 'passed', message: 'Sample count and cloud cover meet the demonstration quality profile.' });
-    const qualifications = [
-        'All observations are synthetic.',
-        'Assessment covers the demo calculation and quality profile only; Gold Standard certification conformance was not assessed.',
-    ];
-    if (action === 'verify')
-        return {
-            draft: {
-                ...base,
-                type: 'VerificationResult',
-                claim: reference(claim),
-                verifier: party(profile),
-                verificationScope: envelope.message.verificationScope,
-                procedure: envelope.message.procedure,
-                outcome: 'verified_with_qualifications',
-                findings,
-                qualifications,
-                verifiedAt: timestamp(),
-                reproducedCalculation: evidence.calculation,
-            },
-            assets,
-        };
+    const expectedStatement = evidenceStatement(evidence);
+    if (digest(claim.statement) !== digest(expectedStatement))
+        fail(manual ? 'CALCULATION_MISMATCH' : 'OBSERVATION_MISMATCH', 'The signed claim differs from the result reproduced from its selected evidence.', 422, 'report', '/statement/object');
+    if (evidence.manifest.semanticProfile && (digest(semanticFields(claim)) !== digest(evidence.semantics) || digest(claim.modalities ?? null) !== digest(evidence.modalities)))
+        fail('ONTOLOGY_PROFILE_MISMATCH', 'The claim does not preserve the monitoring ontology relationships and modalities.', 422, 'report');
+    findings.push({ code: manual ? 'CALCULATION_REPRODUCED' : 'OBSERVATION_REPRODUCED', status: 'passed', message: manual ? 'The independent soil-carbon calculation matches.' : 'Synthetic clear-scene coverage matches capture metadata and the verified image fixture; no soil carbon is inferred.' });
+    if (evidence.capture && evidence.capture.snapshot.cloudCoverPercent > 20)
+        fail('QUALITY_INSUFFICIENT', 'The satellite capture exceeds the demo Function Profile limit of 20% cloud cover.', 422, 'monitor');
+    findings.push({ code: 'FUNCTION_PROFILE_MET', status: 'passed', message: 'The checks applicable to the selected monitoring modalities meet the demonstration profile.' });
+    const qualifications = ['All observations are synthetic.', manual ? 'Assessment covers the demo soil calculation and selected evidence; Gold Standard certification conformance was not assessed.' : 'Assessment covers synthetic image provenance, integrity and coverage only. No soil-carbon measurement or carbon credit is claimed.'];
+    if (action === 'verify') return { draft: {
+        ...base, type: 'VerificationResult', claim: reference(claim), verifier: party(profile), verificationScope: envelope.message.verificationScope,
+        procedure: envelope.message.procedure, outcome: 'verified_with_qualifications', findings, qualifications, verifiedAt: timestamp(),
+        modalities: evidence.modalities, observationSemantics: evidence.semantics,
+        ...(evidence.calculation ? { reproducedCalculation: evidence.calculation } : { reproducedObservation: expectedStatement.object }),
+    }, assets };
     const verification = await retrieveResource(current.verify.id, profile, current.verify.digest);
     await verifySigned(verification, 'verifier');
-    if (
-        !['verified', 'verified_with_qualifications'].includes(verification.outcome) ||
-        verification.claim.digest !== current.report.digest ||
-        verification.verifier === claim.issuer
-    )
-        fail('ATTESTATION_BLOCKED', 'Only an accepted, independent verification bound to this exact claim may be endorsed.', 422, 'verify');
-    return {
-        draft: {
-            ...base,
-            type: 'Attestation',
-            authority: party(profile),
-            subject: subjectDoc,
-            claim: reference(claim),
-            verificationResult: reference(verification),
-            methodologyReference: evidence.reg.methodologyReference,
-            decision: 'endorsed_with_qualifications',
-            policy: { id: 'urn:open-dmrv:demo:attestation-policy:v1', accepts: ['verified', 'verified_with_qualifications'] },
-            qualifications: verification.qualifications,
-            scope: 'Educational programme endorsement only. No Gold Standard certification or credit issuance.',
-            effectiveFrom: timestamp(),
-            effectiveUntil: new Date(Date.now() + 365 * 86400000).toISOString(),
-        },
-        assets,
-    };
+    if (!['verified', 'verified_with_qualifications'].includes(verification.outcome) || verification.claim.digest !== current.report.digest || verification.verifier === claim.issuer)
+        fail('ATTESTATION_BLOCKED', 'Only an accepted independent verification bound to this exact claim may be endorsed.', 422, 'verify');
+    return { draft: {
+        ...base, type: 'Attestation', authority: party(profile), modalities: evidence.modalities,
+        observationSemantics: evidence.semantics, assuredStatement: claim.statement,
+        subject: subjectDoc, claim: reference(claim), verificationResult: reference(verification), methodologyReference: method,
+        decision: 'endorsed_with_qualifications', policy: { id: 'urn:open-dmrv:demo:attestation-policy:v1', accepts: ['verified', 'verified_with_qualifications'] },
+        qualifications: verification.qualifications, scope: manual ? 'Educational programme endorsement only. No Gold Standard certification or credit issuance.' : 'Educational synthetic-image observation endorsement only. No carbon removal or credit issuance.',
+        effectiveFrom: timestamp(), effectiveUntil: new Date(Date.now() + 365 * 86400000).toISOString(),
+    }, assets };
 }
 export async function processMessage(messageId: string) {
     const row = (await pool().query("SELECT * FROM dmrv.messages WHERE message_id=$1 AND direction='request'", [messageId])).rows[0];

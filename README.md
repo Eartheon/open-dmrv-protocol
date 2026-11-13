@@ -160,6 +160,8 @@ Use Node.js 24 or newer and pnpm. Configure `example-app/.env.local` with `DATAB
 
 The sample is educational and does not claim Gold Standard certification or normative protocol conformance. See its README for setup, methodology limits and test instructions.
 
+Monitoring supports manual field study, synthetic satellite image capture, or both. AgrO/ENVO/RESEO fields begin in the observation request and are preserved through signed evidence and assurance. Satellite-only claims describe image observations; the soil-carbon calculation requires manual samples.
+
 ## Links
 
 - [Protocol repository](https://github.com/Eartheon/open-dmrv-protocol)

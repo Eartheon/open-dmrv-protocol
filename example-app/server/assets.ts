@@ -19,12 +19,12 @@ export function registeredPath(uri: string) {
         fail('UNREGISTERED_CUSTODIAN', 'The AssetReference points to an unregistered custodian origin.', 403, 'register');
     return url.pathname + url.search;
 }
-export function prepareAsset(projectId: string, name: string, mediaType: string, content: string, custodian: RoleId = 'measurement') {
+export function prepareAsset(projectId: string, name: string, mediaType: string, content: string | Uint8Array, custodian: RoleId = 'measurement') {
     const assetId = uid(),
         folder = randomUUID(),
         relative = `assets/${projectId}/${folder}/${name}`,
         file = assetPath(relative);
-    const bytes = Buffer.from(content, 'utf8');
+    const bytes = typeof content === 'string' ? Buffer.from(content, 'utf8') : Buffer.from(content);
     mkdirSync(dirname(file), { recursive: true });
     const temporary = file + '.tmp';
     writeFileSync(temporary, bytes, { flag: 'wx' });
@@ -131,12 +131,14 @@ export async function retrieveAsset(asset: Doc, profile: RoleId, projectId: stri
     if (Date.parse(grant.expiresAt) <= Date.now()) fail('ACCESS_GRANT_EXPIRED', 'The evidence grant expired before retrieval.', 403, 'verify');
     const href = registeredPath(grant.href);
     const response = await internalFetch(href + (href.includes('?') ? '&' : '?') + 'grantId=' + encodeURIComponent(grant.id), profile);
-    const raw = response.content as string;
+    if (response.encoding !== undefined && !['base64', 'utf8'].includes(response.encoding))
+        fail('INVALID_ASSET_ENCODING', 'The custodian returned an unsupported asset encoding.', 422, 'monitor');
+    const raw = response.encoding === 'base64' ? Buffer.from(response.content, 'base64') : response.content as string;
     if ('sha256:' + hash(raw).toString('hex') !== grant.expectedDigest || hash(raw).toString('hex') !== asset.integrity.digest)
         fail('DIGEST_MISMATCH', 'Retrieved asset bytes do not match the signed descriptor and evidence manifest.', 422, 'monitor');
     return raw;
 }
-export async function readAndCheckAsset(row: Doc) {
+export async function readAssetBytes(row: Doc) {
     let bytes: Buffer;
     try {
         bytes = readFileSync(assetPath(row.relative_path));
@@ -150,8 +152,9 @@ export async function readAndCheckAsset(row: Doc) {
             422,
             row.custodian.endsWith('/standards') ? 'register' : 'monitor'
         );
-    return bytes!.toString('utf8');
+    return bytes!;
 }
+export async function readAndCheckAsset(row: Doc) { return (await readAssetBytes(row)).toString('utf8'); }
 export async function logExchange(
     projectId: string,
     profile: RoleId,

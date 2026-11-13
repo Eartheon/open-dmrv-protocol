@@ -77,10 +77,10 @@ test('Map polygons use real geographic coordinates and derived hectares', () => 
 });
 test('Claim structure uses exact AgrO, ENVO and RESEO types and relationships', () => {
     const claim = claimSemantics('urn:subject:1', 'urn:asset:1');
-    assert.equal(claim.agronomicContext.equipment.type, 'agro:00000416');
+    assert.equal(claim.agronomicContext!.equipment.type, 'agro:00000416');
     assert.equal(claim.environmentalContext.material.type, 'envo:00001998');
-    assert.equal(claim.remoteSensingContext.product.type, 'reseo:Sentinel2Product');
-    assert.equal(claim.remoteSensingContext.product.hasDataSource.type, 'reseo:DataSource');
+    assert.equal(claim.remoteSensingContext!.product.type, 'reseo:Sentinel2Product');
+    assert.deepEqual(claim.remoteSensingContext!.product.hasDataSource.type, ['reseo:DataSource', 'reseo:Sentinel2']);
     assert.equal(claimContext.hasDataSource['@id'], 'reseo:hasDataSource');
     assert.deepEqual([...new Set(ontologyTerms.map((t) => t.ontology))], ['AgrO', 'ENVO', 'RESEO']);
 });
