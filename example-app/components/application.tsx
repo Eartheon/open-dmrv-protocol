@@ -4,6 +4,8 @@ import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useState } from 'react';
 import { roles, parcels, areaHa, methodology, actionRole } from '@/lib/model';
 import { journeySteps, roleForStep, stageIndex } from '@/lib/journey';
+import { correctionFailure, monitoringDraftFor, stepState } from '@/lib/journey-state';
+import type { MonitoringDraft } from '@/lib/journey-state';
 import { ontologyTerms } from '@/lib/semantics';
 import { FieldMap } from './field-map';
 import type { Doc, RoleId, Action } from '@/lib/model';
@@ -97,11 +99,8 @@ export function Home() {
                         Open dMRV connects the people who collect evidence, make a claim, check it and endorse it. Walk through one project to see every
                         handoff.
                     </p>
-                    <Link href='/projects/new' className='v-button light'>
-                        Start a guided project <span>→</span>
-                    </Link>
-                    <Link href='/projects' className='v-hero-link'>
-                        Or browse existing projects ↗
+                    <Link href='#context' className='v-button light'>
+                        Browse applications <span>→</span>
                     </Link>
                     <div className='v-five-actions'>
                         {['Register', 'Monitor', 'Report', 'Verify', 'Attest'].map((s, i) => (
@@ -112,7 +111,7 @@ export function Home() {
                         ))}
                     </div>
                 </section>
-                <section className='v-home-content'>
+                <section id='context' className='v-home-content'>
                     <div className='v-section-heading'>
                         <div>
                             <p className='eyebrow'>CHOOSE YOUR CONTEXT</p>
@@ -131,6 +130,9 @@ export function Home() {
                             <p>Follow a soil-carbon claim from a real mapped location to an educational attestation. Measurements and parties are fictional.</p>
                             <Link href='/projects/new' className='v-button'>
                                 Start the soil-carbon journey →
+                            </Link>
+                            <Link href='/projects' className='v-button' style={{ marginLeft: '20px' }}>
+                                Or browse existing projects ↗
                             </Link>
                         </article>
                         <article className='muted-context'>
@@ -447,16 +449,13 @@ export function Journey({ projectId }: { projectId: string }) {
         [target, setTarget] = useState(''),
         [edit, setEdit] = useState(''),
         [quantity, setQuantity] = useState(''),
-        [cloud, setCloud] = useState(8),
-        [samples, setSamples] = useState([
-            { sample: 'S01', baselineSocPct: 1.1, currentSocPct: 1.2, bulkDensity: 1.3, depthCm: 30, rockFraction: 0.05 },
-            { sample: 'S02', baselineSocPct: 1.15, currentSocPct: 1.25, bulkDensity: 1.3, depthCm: 30, rockFraction: 0.05 },
-            { sample: 'S03', baselineSocPct: 1.12, currentSocPct: 1.22, bulkDensity: 1.3, depthCm: 30, rockFraction: 0.05 },
-        ]);
+        [editedMonitoring, setEditedMonitoring] = useState<MonitoringDraft | null>(null);
     const profile = roleForStep(stepId),
         role = roles.find((r) => r.id === profile)!,
         step = journeySteps.find((s) => s.id === stepId) || journeySteps[5];
     const { data, error, setError, refresh } = useProject(projectId, profile);
+    const monitoring = monitoringDraftFor(data, projectId, editedMonitoring),
+        { samples, cloudCoverPercent: cloud } = monitoring;
     useEffect(() => {
         if (data && initial) {
             setStepId(data.project.next_action === 'complete' ? 'attest' : data.project.next_action);
@@ -476,6 +475,7 @@ export function Journey({ projectId }: { projectId: string }) {
     const request = data?.messages.find((m: Doc) => m.direction === 'request' && m.action === stepId),
         callback = request ? data?.messages.find((m: Doc) => m.correlation_id === request.message_id) : null;
     const delivered = callback?.status === 'delivered',
+        failed = request?.business_outcome === 'failed' || callback?.business_outcome === 'failed',
         completed = data?.project.next_action !== stepId && (stepId === 'consent' ? !!doc : delivered && callback?.business_outcome === 'completed' && !!doc);
     const pending = !!data?.project.pending_message_id,
         canAct = data?.project.next_action === stepId && !pending;
@@ -543,6 +543,7 @@ export function Journey({ projectId }: { projectId: string }) {
                 </main>
             </>
         );
+    const failure = correctionFailure(data);
     return (
         <div className={'v-journey journey-' + profile}>
             <Topbar profile={profile} />
@@ -553,18 +554,22 @@ export function Journey({ projectId }: { projectId: string }) {
                     <Pill tone='neutral'>Saved in Postgres · revision {data.project.revision}</Pill>
                 </div>
                 <nav className='v-stepper' aria-label='Project walkthrough'>
-                    {journeySteps.map((s, i) => (
-                        <button
-                            disabled={stageIndex(s.id) > stageIndex(data.project.next_action) && data.project.next_action !== 'complete'}
-                            key={s.id}
-                            onClick={() => setStepId(s.id)}
-                            className={stepId === s.id ? 'active' : data.current[s.id] ? 'done' : ''}
-                        >
-                            <span>{data.current[s.id] ? '✓' : i + 1}</span>
-                            <b>{s.label}</b>
-                            <small>{s.id === 'consent' ? 'authorisation' : '/' + s.id}</small>
-                        </button>
-                    ))}
+                    {journeySteps.map((s, i) => {
+                        const status = stepState(data, s.id);
+                        return (
+                            <button
+                                disabled={stageIndex(s.id) > stageIndex(data.project.next_action) && data.project.next_action !== 'complete'}
+                                key={s.id}
+                                onClick={() => setStepId(s.id)}
+                                className={[stepId === s.id ? 'active' : '', status === 'complete' ? 'done' : status].join(' ')}
+                                aria-label={s.label + ' · ' + (status === 'failed' ? 'Request failed' : status === 'complete' ? 'Completed' : status === 'pending' ? 'Awaiting callback' : 'Not completed')}
+                            >
+                                <span aria-hidden='true'>{status === 'complete' ? '✓' : status === 'failed' ? '!' : i + 1}</span>
+                                <b>{s.label}</b>
+                                <small>{status === 'failed' ? 'Request failed' : s.id === 'consent' ? 'authorisation' : '/' + s.id}</small>
+                            </button>
+                        );
+                    })}
                 </nav>
                 <div className='v-journey-layout'>
                     <div className='v-task-area'>
@@ -587,8 +592,9 @@ export function Journey({ projectId }: { projectId: string }) {
                             <ErrorBox message={error} />
                             {data.project.correction && (
                                 <div className='v-correction' role='alert'>
-                                    <Pill tone='red'>CORRECTION REQUIRED</Pill>
-                                    <h3>{data.project.correction.code}</h3>
+                                    <Pill tone='red'>{failure ? 'REQUEST FAILED' : 'CORRECTION REQUIRED'}</Pill>
+                                    <h3>{failure ? 'Your /' + failure.action + ' request failed.' : 'A corrected revision is needed.'}</h3>
+                                    <code>{data.project.correction.code}</code>
                                     <p>{data.project.correction.message}</p>
                                     <span>
                                         Return to <b>{data.project.correction.retryFrom}</b>. A corrected submission creates a new signed version.
@@ -704,9 +710,7 @@ export function Journey({ projectId }: { projectId: string }) {
                                                                         disabled={!canAct}
                                                                         onChange={(e) => {
                                                                             setPrepared(null);
-                                                                            setSamples((v) =>
-                                                                                v.map((row, j) => (j === i ? { ...row, [key]: Number(e.target.value) } : row))
-                                                                            );
+                                                                            setEditedMonitoring({ ...monitoring, samples: samples.map((row, j) => (j === i ? { ...row, [key]: Number(e.target.value) } : row)) });
                                                                         }}
                                                                     />
                                                                 </td>
@@ -718,13 +722,13 @@ export function Journey({ projectId }: { projectId: string }) {
                                         </div>
                                         <div className='v-lab-metrics'>
                                             <span>
-                                                Depth <b>0–30 cm</b>
+                                                Depth <b>{!samples.length ? 'No samples' : samples.every((s) => s.depthCm === samples[0].depthCm) ? '0–' + samples[0].depthCm + ' cm' : 'Varies by sample'}</b>
                                             </span>
                                             <span>
-                                                Coarse fragments <b>5%</b>
+                                                Coarse fragments <b>{!samples.length ? 'No samples' : samples.every((s) => s.rockFraction === samples[0].rockFraction) ? +(samples[0].rockFraction * 100).toFixed(2) + '%' : 'Varies by sample'}</b>
                                             </span>
                                             <span>
-                                                Sampling <b>3 paired samples</b>
+                                                Sampling <b>{samples.length} paired samples</b>
                                             </span>
                                         </div>
                                         <label className='v-inline-field'>
@@ -736,7 +740,7 @@ export function Journey({ projectId }: { projectId: string }) {
                                                 value={cloud}
                                                 disabled={!canAct}
                                                 onChange={(e) => {
-                                                    setCloud(Number(e.target.value));
+                                                    setEditedMonitoring({ ...monitoring, cloudCoverPercent: Number(e.target.value) });
                                                     setPrepared(null);
                                                 }}
                                             />
@@ -955,9 +959,11 @@ export function Journey({ projectId }: { projectId: string }) {
                                 </div>
                             )}
                             {notice && (
-                                <div className='v-notice' role='status'>
+                                <div className={notice.startsWith('HTTP 202') && delivered && failed ? 'v-error' : 'v-notice'} role={delivered && failed ? 'alert' : 'status'}>
                                     {notice.startsWith('HTTP 202') && delivered
-                                        ? 'Callback received and acknowledged. The signed result is saved in Postgres.'
+                                        ? failed
+                                            ? 'Callback received. Your /' + stepId + ' request failed. Review the reason above and create a corrected revision.'
+                                            : 'Callback received and acknowledged. The signed result is saved in Postgres.'
                                         : notice}
                                 </div>
                             )}

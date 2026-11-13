@@ -1,201 +1,214 @@
 # Open dMRV: protocol in practice
 
-A local reference application for the Open dMRV discussion draft. The launcher opens **Carbon Markets**; **Digital Twins** is disabled with a Coming Soon label. Eight role applications share a backend and an educational soil-carbon activity near Thanjavur, Tamil Nadu.
+A guided, Postgres-backed Carbon Markets demonstration of registration, monitoring, reporting, verification and attestation. Eight fictional actor profiles share **one Next.js application at http://localhost:3000**. Digital Twins is intentionally disabled for now.
 
-The design uses the local Forum for Urban Informatics `dmrv.html` reference: sage `#6d8865`, deep green `#243c2a`, pale green, cream, Helvetica/Arial, grid textures and square bordered cards. Each role adds its own accent, information layout and task.
+The home page introduces the protocol and offers two ways to explore Carbon Markets: **Start the soil-carbon journey** or **Or browse existing projects**. The walkthrough explains the current role and task; the archive keeps projects, signed resource versions and protocol exchanges available outside that flow.
 
-## Run
+## Setup and run
 
-Requires Node.js 24 or newer and npm. In this directory:
+Requires **Node.js 24 or newer**, **pnpm 11.1.2** (the version in `packageManager`) and a reachable PostgreSQL database named `open_dmrv`. Create the database before starting; the configured database user needs permission to create the `dmrv` schema and its tables.
 
-```powershell
-npm install
-npm run dev
-```
-
-Open **http://localhost:3000**. This starts Next.js, the API and eight role application gateways. All servers bind to loopback only.
-
-For a production build on your local machine:
+From `example-app/`:
 
 ```powershell
-npm run build
-npm start
+pnpm install
+Copy-Item .env.example .env.local
 ```
 
-The development launcher uses the installed dependencies directly, so npm `.bin` shims are not required. Dependencies may already be available in the prepared workspace; a clean checkout uses `npm install`. No existing external project or its dependencies are modified by the sample.
-
-| Application | Profile | URL |
-|---|---|---|
-| Fieldkeeper | Subject Controller | http://localhost:3101 |
-| Project Studio | Implementer | http://localhost:3102 |
-| Observatory | Measurement Provider / evidence custodian | http://localhost:3103 |
-| Carbon Ledger | Reporting Provider | http://localhost:3104 |
-| Assurance Desk | Independent Assurance Provider | http://localhost:3105 |
-| Standards Library | Gold Standard reference view | http://localhost:3106 |
-| Attestation Office | Fictional Attesting Authority | http://localhost:3107 |
-| Trust Registry | Registrar | http://localhost:3108 |
-
-The same screens are available under `/apps/{profile}` on port 3000. The role gateways serve separate entry points and browser origins from one Next.js codebase. They are not separately deployed organisations or repositories.
-
-## Add Mapbox later
-
-Copy `.env.example` to `.env.local` and enter a **public browser token**:
+If `.env.local` already exists, edit it instead of replacing it. Configure:
 
 ```dotenv
-NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN=pk.your_public_token
-NEXT_PUBLIC_MAPBOX_STYLE=mapbox://styles/mapbox/satellite-streets-v12
+DATABASE_URL=postgresql://USER:PASSWORD@localhost:5432/open_dmrv
+APP_ORIGIN=http://localhost:3000
+NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN=pk.your_public_browser_token
+NEXT_PUBLIC_MAPBOX_STYLE=mapbox://styles/mapbox/standard
 ```
 
-Restart the development server after changing environment variables; rebuild for a production run. Alternatively, use **Mapbox settings** inside a map. That token is stored only in the browser's local storage for the current origin. Use a URL-restricted public token and allow the local app URLs you use. Never use a secret `sk.` token.
-
-The map uses Mapbox GL JS with real WGS84 / OGC:CRS84 coordinates near **79.08° E, 10.77° N**, GeoJSON polygons, derived polygon areas, satellite imagery, parcel labels, selection and navigation controls. Without a token it shows a labelled coordinate/boundary preview. It does not pretend to display satellite imagery.
-
-**The demonstration boundaries are drawn at real geographic locations. They are not surveyed or cadastral boundaries, and names, land tenure, ownership and observations are fictional.** Land stewardship does not claim consent from any real owner. The same registered geometry and subject identifier are carried through monitoring, reporting and attestation.
-
-## Walk through the application
-
-1. Open Carbon Markets and choose **Fieldkeeper**. Select a field, check the demonstration authorisation box, and authorise it. The controller signs a separate authorisation.
-2. Switch to **Project Studio** and register. The Registrar signs the registration result binding the selected subject, authorisation, methodology reference and participants.
-3. Switch to **Observatory** and publish evidence. The measurement party signs an `EvidenceManifest` containing stable asset references, file digests, study provenance and synthetic satellite metadata. The CSV stays in the custodian folder.
-4. Switch to **Carbon Ledger** and issue the claim. The reporter signs a `Claim` containing the illustrative calculation, spatial/temporal scope, evidence digest and limitations.
-5. Switch to **Assurance Desk** and verify. A short-lived, requester-bound evidence grant is issued; file hashes, signatures, keys, independence, calculation reproduction and the demo Function Profile are checked. The verifier signs a separate `VerificationResult`.
-6. Switch to **Attestation Office** and attest. Only accepted outcomes may proceed. The authority rechecks the current chain and signs an `Attestation` binding both the claim and verification digests. All qualifications remain explicit.
-7. Inspect **Objects & handoffs** in any profile: full object, request, immediate ACK, asynchronous callback and revision history. Export the audit or download individual signed objects.
-
-All eight profiles are openly selectable. This is an educational role switcher, not an account system or identity-verification service. Role-scoped opaque tokens last one hour. Signing keys stay in the backend. The browser receives public keys only.
-
-The successful example is **verified_with_qualifications**, because its evidence and scientific calculation are explicitly educational. Attestation policy accepts that outcome while retaining the qualifications.
-
-For a pre-completed chain, stop the API before running `npm run demo:seed` in a fresh runtime. It preserves an existing activity and does not overwrite it. The interactive walkthrough generates full transport exchanges; direct seeding generates the resource objects only.
-
-## Tamper exercises
-
-Issue at least one claim to create the matching fixtures. In PowerShell, from this directory:
+Then run:
 
 ```powershell
-# Change the claimed quantity without changing its original proof:
-Copy-Item runtime/fixtures/claim.tampered.json runtime/inbox/claim.json
-npm run demo:check
-
-# Remove that override; then change laboratory evidence bytes:
-Remove-Item -LiteralPath runtime/inbox/claim.json
-Copy-Item runtime/fixtures/soil-samples.tampered.csv runtime/inbox/soil-samples.csv
-npm run demo:check
-
-# Restore the original input:
-Remove-Item -LiteralPath runtime/inbox/soil-samples.csv
+pnpm dev
 ```
 
-The UI polls every two seconds and performs a live integrity inspection. A manually placed override triggers a red chain-of-trust warning without needing a scenario flag. The CLI exits with code 1 on failed inspection. The **Trust lab** provides the same exercises with buttons and explains how to recover.
+The launcher applies the idempotent database migration, registers eight demo parties and their public keys, imports earlier demo history when present, and starts Next.js plus the durable worker. The web server listens on `127.0.0.1:3000`; callbacks and evidence services use `APP_ORIGIN`. All role interfaces use that same port.
 
-| Exercise | Detection | Correction |
+Useful commands:
+
+```powershell
+pnpm db:check
+pnpm db:migrate
+pnpm typecheck
+pnpm test
+```
+
+`pnpm dev` already includes the worker. `pnpm worker` is available when running the worker separately; it does not start a web server.
+
+For a local production-mode run, stop the development server first:
+
+```powershell
+pnpm build
+pnpm start
+```
+
+`pnpm start` applies migrations and starts both the built web application and worker. Running a production build against an active development output directory is not recommended.
+
+## Guided project journey
+
+1. **Fieldkeeper — Choose land.** Name the project, select a mapped field and authorise use of its synthetic evidence. The land steward signs a `SubjectAuthorisation`.
+2. **Project Studio — Register.** Review the land, permission, methodology and assigned parties. Choose **Review & sign /register**, inspect the signed request in the console, then **Send POST /register**. Wait for `/on_register` before continuing.
+3. **Observatory — Monitor.** Review or edit paired soil samples and satellite cloud cover. `/monitor` produces a signed `EvidenceManifest` and signed references to the CSV, boundary, practice record and satellite context. Monitoring revisions restore the latest submitted samples and cloud cover, including values from a failed monitoring submission. Background polling preserves edits in progress. Unsigned edits are not saved across a page reload.
+4. **Carbon Ledger — Report.** Retrieve the evidence and methodology. Leave the claim quantity blank to calculate from source data, or enter a quantity to test the independent check. `/report` produces a signed `Claim`.
+5. **Assurance Desk — Verify.** Retrieve original evidence, validate signatures and hashes, reproduce the calculation and assess the educational quality profile. `/verify` produces a separate signed `VerificationResult`. The normal outcome is `verified_with_qualifications` because all observations and calculations are educational.
+6. **Attestation Office — Attest.** Bind the exact claim and accepted independent verification in a signed `Attestation`. The fictional authority retains all qualifications; it does not issue Gold Standard certification or carbon credits.
+
+Each protocol step uses a request, immediate HTTP **202 ACK**, later signed `/on_*` callback and HTTP **200 callback ACK**. An ACK accepts the transport message; it does not mean the business action succeeded. Continue only after the callback is received and acknowledged.
+
+## Browse projects and revisions
+
+**Browse projects** opens the portfolio. **Applications** opens the eight role entry points:
+
+| Application | Role | Path on localhost:3000 |
 |---|---|---|
-| Changed claim JSON | `INVALID_SIGNATURE` | Remove override; issue a corrected report when needed |
-| Changed CSV bytes | `DIGEST_MISMATCH` | Restore original, or publish new evidence and report |
-| Missing evidence | `EVIDENCE_UNAVAILABLE` | Restore custody/access and repeat verification |
-| Revoked measurement key | `REVOKED_KEY` | Repair registration/key assignment and re-monitor |
-| Expired reporting key | `EXPIRED_KEY` | Repair registration/key assignment and re-report |
-| Reporter also verifies | `INDEPENDENCE_REQUIREMENT_FAILED` | Assign an independent accountable party |
-| Correctly signed, inflated estimate | `CALCULATION_MISMATCH` | Apply exercise, then issue a new claim; clear and re-report to repair |
-| 64% cloud cover | `QUALITY_INSUFFICIENT` | Apply, then re-monitor and re-report; clear and repeat those steps to repair |
-| Custodian denies evidence access | `ACCESS_DENIED` | Correct access authority/policy |
-| Expired signed grant | `ACCESS_GRANT_EXPIRED` | Request a fresh grant and repeat review |
-| Callback delivery interrupted | `CALLBACK_DELIVERY_FAILED` | Retry original callback bytes; durable output is retained |
-| Reuse ID with changed signed bytes | `CONFLICTING_MESSAGE`, HTTP 409 | Use a new message ID; identical bytes remain idempotent |
+| Fieldkeeper | Land steward / Subject Controller | `/apps/controller` |
+| Project Studio | Project implementer | `/apps/implementer` |
+| Observatory | Measurement provider / evidence custodian | `/apps/measurement` |
+| Carbon Ledger | Reporting provider | `/apps/reporter` |
+| Assurance Desk | Independent assurance provider | `/apps/verifier` |
+| Standards Library | Standards reference and ontology mappings | `/apps/standards` |
+| Attestation Office | Fictional attesting authority | `/apps/attester` |
+| Trust Registry | Registered parties, agents and public keys | `/apps/registrar` |
 
-Failure exercises are local operator controls available in every demo profile. Real deployments must restrict them. **Clear exercise** removes the two known inbox overrides and clears the injected policy condition. It does not rewrite historical signed resources. Some exercises require republishing the affected resource before repeating verification.
+Open a project to use **Overview**, **Attestations**, **Versions**, **Protocol** or **Ontologies**. Switch **Browse as profile** to inspect another role's view. **Resume guided journey** returns to the current task; completed projects offer **Review the journey**.
 
-## Object integrity and history
+From Overview, choose **Start a new revision**, select its starting step, explain the reason and choose **Create a revision journey**. New signed objects retain `revisionOf`, `supersedes` and `revisionReason`. Earlier versions remain in Postgres; replacing an upstream resource suspends downstream current results until assurance is renewed.
 
-The baseline implementation uses recursive JCS canonicalization (RFC 8785), SHA-256 and ECDSA P-256, with the discussion draft's `ecdsa-jcs-2019` Data Integrity proof structure. Invalid JSON values such as lone surrogates and non-finite numbers are rejected. Verification binds the expected actor key, purpose, domain and request challenge, then checks key validity and revocation at signing time.
+Imported legacy objects preserve their original signed bytes as withdrawn history. Those projects start a new authorisation and registration before participating in the new workflow.
 
-Separate actors sign the EvidenceManifest, Claim, VerificationResult and Attestation. Each downstream object commits to full upstream-object digests. CSV digests commit to exact file bytes. Whitespace/key ordering in JSON can change without invalidating its canonical signature; changing a protected value invalidates it. A signature establishes protected content and signer identity, not scientific truth.
+The protocol console displays the latest request, response ACK, callback and callback ACK for a selected action. **Asset APIs** lets you inspect stored catalog, grant and retrieval exchanges. **Attempts** lists previous requests and outcomes; selecting full historical request/callback JSON by attempt is not yet implemented. The asset exchange list currently shows the latest 150 exchanges.
 
-Corrections create UUID-named immutable resource files with `revisionOf`, `supersedes` (previous full-object digest) and `revisionReason`. Superseding an upstream resource suspends downstream current results until repeated. Status records are separate from signed resource content. New activity closes current objects while retaining history.
+## Failures and deliberate tampering
 
-`runtime/keys.private.json` is generated per installation and is ignored by git. All actors' keys are hosted by one demo process; this demonstrates cryptographic mechanics but does not provide organisational separation or protection against a malicious machine administrator. Independent organisations must retain their own keys in production. No private keys, bearer tokens or transient evidence grants are embedded in exported durable resource objects.
+During **Review & sign**, expand **Try changing earlier data before signing**. Select an earlier signed object or asset and edit it. The outer request is signed by the current actor; upstream proofs and content hashes must still validate independently.
 
-Interoperability with other Data Integrity implementations has not been independently certified. No normative Open dMRV conformance is claimed against a discussion draft.
+A failed action shows **Your /... request failed**, its error code, explanation and the step that needs correction. Its step indicator uses **! / Request failed**, not a completion checkmark. A pending retry and a newly requested revision do not inherit a previous completion checkmark. Historical failure results remain inspectable in Versions.
 
-## REST implementation
+| Exercise | Expected result | Correction |
+|---|---|---|
+| Change an earlier claim while keeping its proof | `INVALID_SIGNATURE` callback | Return to report and issue a corrected signed claim |
+| Substitute CSV contents while signing | `DIGEST_MISMATCH` callback | Return to monitor and publish corrected evidence |
+| Sign an inflated report quantity | `CALCULATION_MISMATCH` at verification | Re-report using the source calculation, then re-verify |
+| Publish cloud cover above 20% | `QUALITY_INSUFFICIENT` at verification | Correct monitoring and repeat downstream steps |
+| Change the bytes of a stored evidence file | `DIGEST_MISMATCH` on controlled retrieval | Restore the original file or publish a new evidence revision |
 
-The UI convenience endpoints create signed protocol envelopes on behalf of the selected demo actor. The API also exposes the versioned protocol action routes for already-signed requests. It validates session role, envelope identity, recipient, registered callback, protocol version, signature, timestamp/TTL and idempotency. The envelope message carries activity, subject and current resource references; this sample processes only the currently selected local activity, not arbitrary external resources.
+The correction panel persists after reload. Original signed history is retained. These controls belong to the demonstration signing flow; there is no separate Trust Lab.
 
-| Endpoint | Behaviour |
+## Asset contents, paths and signatures
+
+**The exact file bytes are hashed with SHA-256.** Each `AssetReference` includes the digest, byte length, media type, custodian and locations, and the custodian signs that reference. Evidence manifests and downstream resources bind their upstream signed objects by digest.
+
+Changing a file's contents at the **same path** makes the retrieved bytes differ from the signed digest. Controlled retrieval or subsequent processing fails with `DIGEST_MISMATCH`. The unchanged AssetReference still has a valid signature: the separate byte-hash check detects that the file no longer matches it. Changing the digest or location inside the reference without re-signing instead invalidates the reference's signature. Even a whitespace-only file edit changes the byte digest.
+
+The application does not continuously watch files for edits. Checks run when retrieving or processing evidence. Direct public-file requests do not run the controlled evidence API's integrity check.
+
+Synthetic files are stored under `public/assets/{projectId}/{uniqueFolder}/`. They include:
+
+- `soil-samples.csv`
+- `field-boundary.geojson`
+- `practice-record.json`
+- `satellite-context.json`
+- `methodology-profile.json`
+
+Reporter, verifier and attester can use **Evidence & methodology** to follow a catalog descriptor, request a signed grant and retrieve hash-verified content. Requests, grants and responses are recorded in Postgres. Grants bind a requester, resource, purpose and expiry; they last two minutes. Public asset copies are intentionally accessible for this synthetic demo and are not private evidence storage.
+
+## Routes and persistence
+
+| Endpoint | Purpose |
 |---|---|
-| `POST /session` | Open a fictional demo profile; returns one-hour opaque bearer token |
-| `POST /consent` | Subject Controller signs demonstration authorisation |
-| `POST /actions/{action}` | UI adapter constructs and signs an action envelope |
-| `POST /dmrv/v0.0.1/{register,monitor,report,verify,attest}` | Accept signed envelope; return HTTP 202 ACK; process asynchronously |
-| `POST /callbacks/{role}` | Actual loopback callback delivery; separate service credential; signed envelope; correlation and replay checks; HTTP 200 ACK |
-| `POST /evidence/access-grants` | Issue signed resource-, requester- and purpose-bound grant; HTTP 201 |
-| `POST /evidence/retrieve` | Retrieve CSV using a verified grant and authenticated requester; reject expired grants |
-| `GET /state` | Public registry, current objects, live inspection and history; no private keys |
-| `POST /inspect` | Live chain inspection without creating a signed assurance result |
-| `GET /objects/{encodedUrn}` | Export an immutable resource |
-| `GET /status/{encodedUrn}` | Signed current resource status |
-| `GET /export` | Export the public audit snapshot |
-| `POST /demo/scenario` | Apply/clear an educational failure condition |
-| `POST /demo/retry-callbacks` | Retry pending delivery with original callback ID and signed bytes |
-| `POST /demo/replay` | Demonstrate stored ACK and conflicting reuse rejection |
-| `POST /demo/reset` | New activity; retain history |
+| `GET /api/health` | Check database connectivity and callback origin |
+| `POST /api/session` | Select a fictional profile; set a four-hour HttpOnly, SameSite cookie |
+| `GET /api/projects` | List projects assigned to the selected party |
+| `POST /api/projects` | Create a project and mapped subject |
+| `GET /api/projects/{id}` | Read project, current objects, history, messages and exchanges |
+| `POST /api/projects/{id}/consent` | Sign subject authorisation; synchronous HTTP 201 |
+| `POST /api/projects/{id}/sign` | Prepare a signed protocol envelope for review |
+| `POST /register`, `/monitor`, `/report`, `/verify`, `/attest` | Accept signed action envelopes; HTTP 202 ACK |
+| `POST /on_register`, `/on_monitor`, `/on_report`, `/on_verify`, `/on_attest` | Receive correlated, signed callbacks; HTTP 200 ACK |
+| `POST /api/projects/{id}/revise` | Begin a revision with a reason |
+| `POST /api/projects/{id}/retry-callback` | Queue another callback delivery attempt |
+| `POST /api/projects/{id}/asset` | UI adapter for controlled evidence retrieval |
+| `GET /catalog/resources/{encodedId}` | Resolve a signed resource and its current status |
+| `GET /catalog/assets/{encodedId}` | Resolve a signed AssetReference |
+| `POST /evidence/access-grants` | Exchange a signed access request for a signed grant; HTTP 201 |
+| `GET /evidence/assets/{encodedId}?grantId={encodedGrantId}` | Retrieve verified content using the requester-bound grant |
+| `GET /api/status/{encodedId}` | Get a signed resource-status record |
+| `GET /api/registry` | Read parties, agents and public verification methods |
 
-The `AccessGrant.href` points to the controlled `POST /evidence/retrieve` service; its `method` is `POST`. Send the grant plus the requesting profile bearer token. Source-file access itself is not public. Production bindings may use capability URLs, signed object URLs or proof-of-possession delivery instead.
+Browser action requests use the demo session cookie, `Content-Type: application/vnd.open-dmrv+json;version=0.0.1` and `Idempotency-Key` equal to `context.messageId`. Internal custodian calls use a service credential plus the acting profile. Callback delivery additionally requires the service credential. No secret belongs in a durable claim or manifest.
 
-Protocol requests use `Content-Type: application/vnd.open-dmrv+json;version=0.0.1`, `Authorization: Bearer …`, and `Idempotency-Key` equal to `context.messageId`. A transport ACK is not an assurance decision. Callback `correlationId` matches the original request `messageId`, and `transactionId` stays unchanged. Requests and completed outputs persist; pending requests and callback delivery resume after API restart.
+The `dmrv` database schema stores parties, agents, verification methods, projects, memberships, subjects, immutable signed resources, resource references and status events, immutable protocol envelopes, callback deliveries, outbox jobs, access requests/grants, API exchanges, sessions and audit events. Assets remain files; their signed descriptors and hashes are stored in Postgres.
 
-This local profile intentionally uses HTTP loopback and generated opaque tokens. It does **not** implement OAuth, TLS, `private_key_jwt`, mTLS, an external identity provider, distributed signing, accreditation, production key custody or durable multi-worker queues. Implement those under the draft's production HTTPS/OAuth profile before deployment.
+The worker leases jobs from the durable outbox, processes accepted actions and delivers callbacks. Retries preserve callback identity and signed bytes, use increasing delays, and stop after ten failed attempts. **Retry pending callback delivery** queues another delivery attempt. A stored transport ACK is idempotent; reusing the same message ID with changed signed content is rejected.
 
-## Gold Standard and the calculation boundary
+`runtime/keys.private.json` and `runtime/service.secret` are generated locally and must be preserved with the database. Registered public keys must match the existing private keys. Do not delete or replace keys to repair a connection error. Keep `.env.local` and runtime secrets out of source control.
 
-Standards Authority: **Gold Standard**. Attesting Authority: **Demo Programme Authority**, a fictional entity, not Gold Standard. The pinned reference is the SOC Framework Methodology v1.0 (PDF published January 2020), with the 2025 SOC model guidelines linked for context.
+## Mapbox and geographic scope
 
-The stock example computes `(current SOC% − baseline SOC%) × bulk density (g/cm³) × depth (cm) × (1 − rock fraction)` to obtain tC/ha, multiplies by area and 44/12, subtracts illustrative emissions/leakage and applies an illustrative 20% buffer. Inputs, assumptions and outputs are included in the signed claim and reproduced by the verifier.
+The map uses Mapbox GL JS v3 with `mapbox://styles/mapbox/standard`, real WGS84 / OGC:CRS84 coordinates, GeoJSON polygons and derived hectares near **79.08 E, 10.77 N**, Thanjavur, Tamil Nadu. Use a public `pk.` browser token. **Mapbox settings** can store a public token in local storage for the current origin. Restart after changing environment configuration; rebuild a production bundle after changing public build-time variables.
 
-**This is not a complete Gold Standard quantification or an approved activity module.** Before/after samples alone do not establish an additional project benefit relative to a counterfactual baseline. The example does not implement project eligibility, additionality, full baseline modelling, stratified sampling, equivalent soil mass, uncertainty treatment, permanence, risk-based buffer determination, leakage accounting, external validation, programme approval or credit issuance. Fixed deductions and equal sample weights are teaching assumptions, not Gold Standard default parameters. Paddy systems may require broader GHG accounting, including methane, which this example does not assess.
+Without a token, the map displays a labelled coordinate/boundary preview. Locations are real; demonstration boundaries are not surveyed or cadastral records. Names, parties, ownership, observations and satellite context are fictional. No satellite raster is ingested, and soil carbon is not inferred from the satellite context record.
 
-The Standards Library and every assurance object state these limits. The correct architecture is to replace the demo calculation/profile with an applicable validated scientific module while retaining the protocol exchange.
+## Methodology and ontology scope
 
-Sources checked on 12 November 2026:
+**Gold Standard SOC Framework v1.0** is a pinned historical reference. The actual calculation is an educational fixed-depth soil-stock difference:
 
-- [SOC Framework Methodology v1.0](https://globalgoals.goldstandard.org/402-luf-agr-fm-soil-organic-carbon-framework-methodolgy/)
-- [SOC model requirements and guidelines](https://globalgoals.goldstandard.org/402-7_soil-organic-carbon-model-requirements-and-guidelines/)
-- [Paris Agreement alignment schedule](https://globalgoals.goldstandard.org/gs4gg-paris-agreement-alignment/) — the published schedule, last updated April 2026, lists SOC Framework v1.0 as Internal revision. It requires checking current programme eligibility rather than treating the historical reference as automatically valid for issuance.
-- [Zero tillage activity module](https://globalgoals.goldstandard.org/402-4-luf-agr-am-soc-module-zero-tillage/) — relevant activity-specific reference to assess when replacing the toy calculation; not implemented here.
+`(current SOC% - baseline SOC%) × density × depth × (1 - rock fraction)`
 
-## Ontology mapping
+The result in tC/ha is multiplied by area and 44/12, then reduced by illustrative emissions, leakage and a 20% buffer. The verifier independently reproduces it. This is not an approved activity module, an additionality assessment, full uncertainty or permanence treatment, programme certification, or credit issuance. Standards Library links to the framework and programme-alignment sources for review.
 
-Claims and evidence carry an inline JSON-LD context and annotations from the three requested ontologies. Protocol-specific properties use a separate demo vocabulary. AgrO's agricultural implement is a broad type for the example drill, not a claim that that term means no-tillage.
+Signed claims contain an inline JSON-LD 1.1 context and disclose these exact mappings:
 
-| Ontology | Term | Use |
+| Ontology | Term | Claim use |
 |---|---|---|
-| AgrO | `http://purl.obolibrary.org/obo/AGRO_00000416` | Agricultural implement associated with the practice |
-| ENVO | `http://purl.obolibrary.org/obo/ENVO_00001998` | Soil material sampled by the laboratory |
-| RESEO | `https://w3id.org/reseo#Sentinel2Product` | Supporting satellite product metadata |
-| RESEO | `https://w3id.org/reseo#hasDataSource` / `DataSource` | Product-to-source relationship |
+| AgrO | `http://purl.obolibrary.org/obo/AGRO_00000416` | Agricultural implement; demonstration drill |
+| ENVO | `http://purl.obolibrary.org/obo/ENVO_00001998` | Sampled soil material |
+| RESEO | `https://w3id.org/reseo#Sentinel2Product` | Synthetic supporting satellite context |
+| RESEO | `https://w3id.org/reseo#hasDataSource` and `DataSource` | Product-to-source relationship |
 
-Sources and attribution:
+AgrO does not define the demo no-till practice class: that and other protocol/carbon-specific fields use the explicit demo vocabulary. Full OWL reasoning and SHACL validation are not implemented. See **Ontologies** in a project archive for IRIs and field paths.
 
-- Aubert C., Buttigieg P.L., Laporte M.A., Devare M., Arnaud E. (2017), [CGIAR Agronomy Ontology](https://github.com/AgriculturalSemantics/agro), CC BY 4.0. Term reference release: 2022-11-02.
-- [Environment Ontology](https://github.com/EnvironmentOntology/envo), CC BY 4.0; soil term reference.
-- Aldana-Martín et al., [RESEO](https://github.com/KhaosResearch/REmoteSEnsingOntology), version 1.0, MIT; [research publication](https://doi.org/10.1016/j.eswa.2021.115838).
+Sources: [AgrO](https://github.com/AgriculturalSemantics/agro) (CC BY 4.0), [ENVO](https://github.com/EnvironmentOntology/envo) (CC BY 4.0), [RESEO](https://github.com/KhaosResearch/REmoteSEnsingOntology) (MIT), and the [SOC Framework](https://globalgoals.goldstandard.org/402-luf-agr-fm-soil-organic-carbon-framework-methodolgy/).
 
-This sample annotates records; it does not load full OWL files, execute a reasoner or provide SHACL validation.
-
-## Checks
+## Validation and limitations
 
 ```powershell
-npm run typecheck
-npm test
-npm run build
+pnpm typecheck
+pnpm test
 ```
 
-The tests exercise signatures, canonicalization, tampered inbox files, asset hashes, registry status, assurance independence, grant requester binding/expiry, calculation mismatch despite a valid signature, cloud-quality failure, immutable revisions, persistence, complete endorsement and request/callback idempotency.
+Tests cover JCS/P-256 proofs, altered inner claims, exact asset bytes changed at an unchanged path, calculation reproduction, malformed samples, geographic coordinates, ontology mappings, protocol context, failure indicators and restoration of monitoring observations without overwriting edits during polling.
 
-Browser verification needs a normally launched local server and a Mapbox token for imagery. The initial restricted execution environment denied loopback socket connections, so a successful production build is not evidence of completed visual or live HTTP testing. Use the internal browser after starting the server in a normal local terminal.
+The database integration test requires a **separate test database whose name contains `test`**. Set it in the shell before running:
+
+```powershell
+$env:TEST_DATABASE_URL = 'postgresql://USER:PASSWORD@localhost:5432/open_dmrv_test'
+pnpm test:integration
+```
+
+It exercises registration, persisted callbacks, idempotency and database immutability. Without `TEST_DATABASE_URL`, it is skipped. Unit tests and a successful build do not establish complete browser, restart or distributed-worker validation.
+
+This remains a local educational application. All eight profiles are openly selectable; every project includes the same fixed parties. The backend holds all signing keys, and evidence resolution is restricted to the configured local origin. Real account authentication, independent organisational key custody, external custodians, private evidence storage and production HTTPS/OAuth policy are outside this demo. Cryptographic signatures establish protected content and signer identity, not scientific truth; independent cryptosuite interoperability has not been certified.
 
 ## Source layout
 
-`app/` contains Next.js routes and global design styles. `components/` contains distinct role experiences and the Mapbox component. `lib/model.ts` defines the actor/profile/domain vocabulary. `server/crypto.ts` implements canonicalization and signatures. `server/engine.ts` implements resource lifecycle, assurance and persistence. `server/index.ts` provides HTTP authentication and asynchronous delivery. `scripts/` contains lifecycle and CLI tools. `tests/` contains protocol checks. Generated runtime data, keys and inbox files stay out of git.
+- `app/`: Next.js pages, protocol/API route handlers and styles.
+- `components/application.tsx`: home, project creation, role portfolios, journey, archive and protocol console.
+- `components/field-map.tsx`: Mapbox parcel view.
+- `lib/journey-state.ts`: monitoring draft restoration and step outcome presentation.
+- `lib/model.ts`, `lib/journey.ts`, `lib/semantics.ts`: demo actors, steps, geography and ontology mappings.
+- `server/workflow.ts`: protocol acceptance, processing and callbacks.
+- `server/repository.ts`, `server/db.ts`, `db/migrations/`: Postgres persistence and immutable resource history.
+- `server/assets.ts`, `server/crypto.ts`, `server/http.ts`: custody, integrity, signatures and HTTP adapters.
+- `scripts/`: migration, worker, launcher and database checks.
+- `tests/`: unit/regression and opt-in database integration checks.
 
-This implementation was informed by the repository README/specification, `Open dMRV Design Conversation.md`, the supplied `Open dMRV v0.0.1.pptx`, and the local Forum website. It follows the five actions and the four separately signed assurance objects; it does not rewrite the protocol specification.
+The implementation follows the five actions and separately signed assurance resources in the repository's discussion draft. It does not claim normative Open dMRV conformance.

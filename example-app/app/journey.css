@@ -878,6 +878,19 @@
     background: #e8f0e1;
     color: #577a46;
 }
+.v-stepper button.failed,
+.journey-measurement .v-stepper button.failed {
+    color: #a44435;
+    background: #fff1ec;
+    border-bottom-color: #a44435;
+}
+.v-stepper button.failed > span {
+    background: #f7dcd4;
+    color: #a44435;
+}
+.v-stepper button.failed:disabled {
+    opacity: 1;
+}
 .v-journey-layout {
     display: grid;
     grid-template-columns: minmax(0, 1.25fr) minmax(390px, 0.85fr);

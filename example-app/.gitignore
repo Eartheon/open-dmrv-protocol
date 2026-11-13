@@ -4,3 +4,4 @@ runtime/
 public/assets/
 *.tsbuildinfo
 .env*
+audit/
