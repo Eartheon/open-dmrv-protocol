@@ -1,4 +1,4 @@
-import { Applications } from '@/components/application';
+import { redirect } from 'next/navigation';
 export default function Page() {
-    return <Applications />;
+    redirect('/projects');
 }

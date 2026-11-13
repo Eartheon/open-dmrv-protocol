@@ -1215,6 +1215,73 @@
     padding: 28px;
     margin-bottom: 24px;
 }
+.v-workspace-reference {
+    margin: 20px 0;
+    padding: 20px;
+    border: 1px solid #d5d8d1;
+    background: #fff;
+    scroll-margin-top: 24px;
+}
+.v-workspace-reference > button,
+.v-claim-review summary {
+    cursor: pointer;
+    font-size: 12px;
+    font-weight: 700;
+    color: #34563d;
+    padding: 10px 0;
+}
+.v-workspace-reference > button {
+    width: 100%;
+    text-align: left;
+    border: 0;
+    background: transparent;
+}
+.v-claim-review {
+    margin-bottom: 24px;
+    border-top: 4px solid #526b4c;
+    overflow-wrap: anywhere;
+}
+.v-claim-review h2 {
+    margin: 24px 0 12px;
+}
+.v-card p.v-claim-result {
+    font-size: clamp(30px, 4vw, 48px);
+    font-weight: 600;
+    line-height: 1.2;
+    color: #34563d;
+    margin: 16px 0;
+}
+.v-claim-result span {
+    margin-left: 12px;
+    font-size: 18px;
+    font-weight: 400;
+}
+.v-claim-review .v-summary-list dd {
+    min-width: 0;
+    font-size: 13px;
+    line-height: 1.6;
+    max-width: 65%;
+}
+.v-claim-review details {
+    border-top: 1px solid #d5d8d1;
+}
+.v-claim-review details ul {
+    font-size: 12px;
+    line-height: 1.7;
+}
+.v-claim-review .v-json {
+    max-height: 460px;
+    overflow: auto;
+}
+.v-console-explainer {
+    padding: 0 18px;
+    color: #b7c6b3;
+    font-size: 11px;
+    line-height: 1.7;
+}
+#verification-evidence {
+    scroll-margin-top: 24px;
+}
 .v-review-heading h2 {
     font-size: 34px;
     line-height: 1.08;

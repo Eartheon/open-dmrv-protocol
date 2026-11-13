@@ -2,7 +2,7 @@
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useState } from 'react';
-import { roles, parcels, areaHa, methodology, actionRole } from '@/lib/model';
+import { roles, parcels, areaHa, methodology, actionRole, party } from '@/lib/model';
 import { journeySteps, roleForStep, stageIndex } from '@/lib/journey';
 import { correctionFailure, monitoringDraftFor, stepState } from '@/lib/journey-state';
 import type { MonitoringDraft } from '@/lib/journey-state';
@@ -29,7 +29,7 @@ const short = (value?: string) => (value ? (value.length > 30 ? value.slice(0, 2
 function Pill({ children, tone = 'green' }: { children: React.ReactNode; tone?: string }) {
     return <span className={'v-pill ' + tone}>{children}</span>;
 }
-function Topbar({ title = 'Protocol in practice', profile }: { title?: string; profile?: RoleId }) {
+function Topbar() {
     return (
         <header className='v-topbar'>
             <Link className='v-wordmark' href='/'>
@@ -39,9 +39,9 @@ function Topbar({ title = 'Protocol in practice', profile }: { title?: string; p
             <nav>
                 <Link href='/projects/new'>New project</Link>
                 <Link href='/projects'>Browse projects</Link>
-                <Link href='/carbon'>Applications</Link>
+                <Link href='/projects#reference'>Reference library</Link>
             </nav>
-            <span className='v-profile-label'>{profile ? roles.find((r) => r.id === profile)?.name : title}</span>
+            <span className='v-profile-label'>Project implementer workspace</span>
         </header>
     );
 }
@@ -97,11 +97,10 @@ export function Home() {
                         trust is built.
                     </h1>
                     <p>
-                        Open dMRV connects the people who collect evidence, make a claim, check it and endorse it. Walk through one project to see every
-                        handoff.
+                        Open dMRV connects the people who collect evidence, make a claim, check it and endorse it. Coordinate one project from registration to attestation in your implementer workspace.
                     </p>
                     <Link href='#context' className='v-button light'>
-                        Browse applications <span>→</span>
+                        Explore the project journey <span>→</span>
                     </Link>
                     <div className='v-five-actions'>
                         {['Register', 'Monitor', 'Report', 'Verify', 'Attest'].map((s, i) => (
@@ -116,7 +115,7 @@ export function Home() {
                     <div className='v-section-heading'>
                         <div>
                             <p className='eyebrow'>CHOOSE YOUR CONTEXT</p>
-                            <h2>One protocol. Different applications.</h2>
+                            <h2>One workspace. The complete journey.</h2>
                         </div>
                         <p>
                             Start a new journey or inspect an existing record.
@@ -149,7 +148,7 @@ export function Home() {
                         <div>
                             <b>01</b>
                             <h3>You have one task at a time.</h3>
-                            <p>Each application explains your current role and the next action.</p>
+                            <p>Each step explains what your project needs and what to do next.</p>
                         </div>
                         <div>
                             <b>02</b>
@@ -234,7 +233,7 @@ export function NewProject() {
                                     <span>{i + 1}</span>
                                     <div>
                                         <b>{s.label}</b>
-                                        <small>{roles.find((r) => r.id === s.role)?.title}</small>
+                                        <small>{s.id === 'consent' ? 'Land permission' : '/' + s.id}</small>
                                     </div>
                                 </li>
                             ))}
@@ -251,84 +250,46 @@ export function NewProject() {
     );
 }
 
-export function Applications() {
-    return (
-        <>
-            <Topbar />
-            <main id='main' className='v-page'>
-                <div className='v-page-title'>
-                    <p className='eyebrow'>APPLICATIONS / BROWSE MODE</p>
-                    <h1>Different work. Different perspectives.</h1>
-                    <p>Open an application to browse its projects and history. For a step-by-step introduction, start a guided project.</p>
-                    <Link href='/projects/new' className='v-button'>
-                        Start a guided project →
-                    </Link>
-                </div>
-                <div className='v-app-grid'>
-                    {roles.map((r, i) => (
-                        <Link href={'/apps/' + r.id} className={'v-app-tile tile-' + r.id} key={r.id}>
-                            <span>
-                                0{i + 1} / {r.title}
-                            </span>
-                            <h2>{r.name}</h2>
-                            <p>{r.description}</p>
-                            <b>Enter as {r.person} ↗</b>
-                        </Link>
-                    ))}
-                </div>
-            </main>
-            <Footer />
-        </>
-    );
-}
-
-export function ProjectBrowser({ roleId = 'implementer' }: { roleId?: string }) {
-    const profile = roles.find((r) => r.id === roleId)!,
-        [projects, setProjects] = useState<Doc[]>([]),
+export function ProjectBrowser() {
+    const [projects, setProjects] = useState<Doc[]>([]),
         [error, setError] = useState(''),
         [query, setQuery] = useState(''),
+        [referenceOpen, setReferenceOpen] = useState(false),
+        [registryOpen, setRegistryOpen] = useState(false),
         [registry, setRegistry] = useState<Doc[]>([]);
     useEffect(() => {
-        enter(profile.id)
+        enter('implementer')
             .then(async () => {
                 setProjects((await call('/api/projects')).projects);
-                if (profile.id === 'registrar') setRegistry((await call('/api/registry')).parties);
+                setRegistry((await call('/api/registry')).parties);
             })
             .catch((e) => setError(e.message));
-    }, [profile.id]);
+    }, []);
+    useEffect(() => {
+        const openReference = () => { if (window.location.hash === '#reference') setReferenceOpen(true); };
+        openReference();
+        window.addEventListener('hashchange', openReference);
+        return () => window.removeEventListener('hashchange', openReference);
+    }, []);
     const selected = projects.filter((p) => (p.name + ' ' + p.subject_name).toLowerCase().includes(query.toLowerCase()));
-    const copy: Record<string, [string, string]> = {
-        controller: ['Your fields, your projects.', 'Manage participation and see what has been claimed about your land.'],
-        implementer: ['Project register', 'Coordinate registrations, participants and corrections across your portfolio.'],
-        measurement: ['Observation workspace', 'Browse monitoring runs, signed evidence packages and source assets.'],
-        reporter: ['Carbon reporting ledger', 'Open a project to inspect evidence, calculations and claim revisions.'],
-        verifier: ['Independent review queue', 'Check submissions that need assurance and revisit earlier findings.'],
-        attester: ['Attestation archive', 'Browse signed endorsements, their qualifications and complete revision histories.'],
-        standards: ['Methodology & vocabulary library', 'The standard defines the science. Ontologies give the claim a shared meaning.'],
-        registrar: ['Network trust registry', 'Resolve accountable parties, registered agents and public signing keys.'],
-    };
     return (
-        <div className={'v-front front-' + profile.id}>
-            <Topbar profile={profile.id} />
+        <div className='v-front'>
+            <Topbar />
             <main id='main' className='v-page'>
                 <section className='v-front-hero'>
                     <div>
-                        <p className='eyebrow'>
-                            {profile.name.toUpperCase()} / {profile.role}
-                        </p>
-                        <h1>{copy[profile.id][0]}</h1>
-                        <p>{copy[profile.id][1]}</p>
-                        <div className='v-person'>
-                            {profile.person} · {profile.org}
-                        </div>
+                        <p className='eyebrow'>PROJECT IMPLEMENTER WORKSPACE</p>
+                        <h1>Your projects, from start to finish.</h1>
+                        <p>Coordinate evidence, claims, independent review and attestations. Resume a journey or explore its full history.</p>
                     </div>
                     <Link className='v-button' href='/projects/new'>
                         New guided project +
                     </Link>
                 </section>
                 <ErrorBox message={error} />
-                {profile.id === 'standards' && (
-                    <>
+                <section id='reference' className='v-workspace-reference'>
+                    <button aria-expanded={referenceOpen} aria-controls='methodology-reference' onClick={() => setReferenceOpen(!referenceOpen)}>Methodology & ontology reference {referenceOpen ? '−' : '+'}</button>
+                    <div id='methodology-reference' hidden={!referenceOpen}>
                         <div className='v-standards-grid'>
                             <section className='v-card'>
                                 <Pill tone='amber'>EXTERNAL STANDARD</Pill>
@@ -355,15 +316,17 @@ export function ProjectBrowser({ roleId = 'implementer' }: { roleId?: string }) 
                             </section>
                         </div>
                         <OntologyView />
-                    </>
-                )}
-                {profile.id === 'registrar' && (
+                    </div>
+                </section>
+                <section className='v-workspace-reference'>
+                    <button aria-expanded={registryOpen} aria-controls='network-reference' onClick={() => setRegistryOpen(!registryOpen)}>Network participants & public keys {registryOpen ? '−' : '+'}</button>
+                    <div id='network-reference' hidden={!registryOpen}>
                     <section className='v-card'>
                         <div className='v-table-wrap'>
                             <table>
                                 <thead>
                                     <tr>
-                                        <th>Party / profile</th>
+                                        <th>Service participant</th>
                                         <th>Role</th>
                                         <th>Verification method</th>
                                         <th>Status</th>
@@ -389,20 +352,21 @@ export function ProjectBrowser({ roleId = 'implementer' }: { roleId?: string }) 
                             </table>
                         </div>
                     </section>
-                )}
+                    </div>
+                </section>
                 <div className='v-archive-toolbar'>
                     <div>
-                        <h2>{profile.id === 'attester' ? 'Projects & attestation revisions' : 'Project portfolio'}</h2>
+                        <h2>Project portfolio</h2>
                         <span>{projects.length} projects · browsing outside the walkthrough</span>
                     </div>
                     <input aria-label='Search projects' placeholder='Search projects or fields…' value={query} onChange={(e) => setQuery(e.target.value)} />
                 </div>
                 {selected.length ? (
-                    <div className={'v-project-list list-' + profile.id}>
+                    <div className='v-project-list'>
                         {selected.map((p) => (
-                            <Link className='v-project-row' key={p.id} href={'/projects/' + p.id + '?profile=' + profile.id}>
+                            <Link className='v-project-row' key={p.id} href={'/projects/' + p.id}>
                                 <div className='v-project-number'>
-                                    {profile.id === 'controller' ? '◈' : profile.id === 'attester' ? '✓' : profile.id === 'verifier' ? '?' : '↗'}
+                                    ↗
                                 </div>
                                 <div className='v-project-summary'>
                                     <b>{p.name}</b>
@@ -452,7 +416,6 @@ export function Journey({ projectId }: { projectId: string }) {
         [quantity, setQuantity] = useState(''),
         [editedMonitoring, setEditedMonitoring] = useState<MonitoringDraft | null>(null);
     const profile = roleForStep(stepId),
-        role = roles.find((r) => r.id === profile)!,
         step = journeySteps.find((s) => s.id === stepId) || journeySteps[5];
     const { data, error, setError, refresh } = useProject(projectId, profile);
     const monitoring = monitoringDraftFor(data, projectId, editedMonitoring),
@@ -548,11 +511,11 @@ export function Journey({ projectId }: { projectId: string }) {
         );
     const failure = correctionFailure(data);
     return (
-        <div className={'v-journey journey-' + profile}>
-            <Topbar profile={profile} />
+        <div className='v-journey'>
+            <Topbar />
             <main id='main'>
                 <div className='v-journey-meta'>
-                    <Link href={'/projects/' + projectId + '?profile=' + profile}>← Exit to project archive</Link>
+                    <Link href={'/projects/' + projectId}>← Exit to project archive</Link>
                     <span>{data.project.name}</span>
                     <Pill tone='neutral'>Saved in Postgres · revision {data.project.revision}</Pill>
                 </div>
@@ -578,9 +541,9 @@ export function Journey({ projectId }: { projectId: string }) {
                     <div className='v-task-area'>
                         <section className='v-role-banner'>
                             <div className='v-role-masthead'>
-                                <span>{role.name.toUpperCase()}</span>
+                                <span>PROJECT IMPLEMENTER WORKSPACE</span>
                                 <span>
-                                    {role.person} / {role.title}
+                                    {data.project.name}
                                 </span>
                             </div>
                             <p className='eyebrow'>STEP {stageIndex(stepId) + 1} OF 6</p>
@@ -618,8 +581,7 @@ export function Journey({ projectId }: { projectId: string }) {
                                         <label className='v-check'>
                                             <input type='checkbox' checked={agreed || !!doc} disabled={!!doc} onChange={(e) => setAgreed(e.target.checked)} />
                                             <span>
-                                                I authorise this demonstration field to participate and permit the named providers to use its synthetic
-                                                evidence.
+                                                Record the land steward’s permission for this demonstration field and the named providers’ use of its synthetic evidence.
                                             </span>
                                         </label>
                                         <button
@@ -671,8 +633,8 @@ export function Journey({ projectId }: { projectId: string }) {
                                     <div className='v-participant-chips'>
                                         {roles.map((r) => (
                                             <span key={r.id}>
-                                                {r.name}
-                                                <small>{r.role}</small>
+                                                {r.org}
+                                                <small>{r.title}</small>
                                             </span>
                                         ))}
                                     </div>
@@ -794,8 +756,7 @@ export function Journey({ projectId }: { projectId: string }) {
                                             />
                                         </label>
                                         <p className='v-small'>
-                                            You can deliberately enter an incorrect quantity. Your signature will be valid, but the independent verifier will
-                                            request a correction.
+                                            You can deliberately request an incorrect quantity. The reporter will sign the claim, but the independent verifier will request a correction.
                                         </p>
                                     </section>
                                     ) : <section className='v-card v-satellite-panel'>
@@ -808,6 +769,7 @@ export function Journey({ projectId }: { projectId: string }) {
                             )}
                             {stepId === 'verify' && (
                                 <>
+                                    <ClaimReview data={data} />
                                     <section className='v-review-desk'>
                                         <div className='v-review-heading'>
                                             <Pill tone='amber'>INDEPENDENT ASSURANCE</Pill>
@@ -845,7 +807,7 @@ export function Journey({ projectId }: { projectId: string }) {
                                             </div>
                                         )}
                                     </section>
-                                    <AssetBrowser data={data} profile={profile} />
+                                    <div id='verification-evidence'><AssetBrowser data={data} profile={profile} /></div>
                                 </>
                             )}
                             {stepId === 'attest' && (
@@ -893,7 +855,7 @@ export function Journey({ projectId }: { projectId: string }) {
                             {stepId !== 'consent' && canAct && (
                                 <section className='v-signing-panel'>
                                     <div>
-                                        <p className='eyebrow'>YOUR SIGNATURE / {role.name.toUpperCase()}</p>
+                                        <p className='eyebrow'>REVIEW REQUEST / {step.label.toUpperCase()}</p>
                                         <h2>{data.project.correction ? 'Create a corrected revision.' : 'Ready for the handoff?'}</h2>
                                         <p>
                                             {data.project.correction
@@ -992,12 +954,12 @@ export function Journey({ projectId }: { projectId: string }) {
                                         </p>
                                     </div>
                                     {data.project.next_action === 'complete' ? (
-                                        <Link className='v-button' href={'/projects/' + projectId + '?profile=' + profile}>
+                                        <Link className='v-button' href={'/projects/' + projectId}>
                                             Open project archive →
                                         </Link>
                                     ) : (
                                         <button className='v-button' onClick={goNext}>
-                                            Continue to {roles.find((r) => r.id === roleForStep(data.project.next_action))?.name} →
+                                            Continue to {journeySteps.find((s) => s.id === data.project.next_action)?.label} →
                                         </button>
                                     )}
                                 </section>
@@ -1013,6 +975,51 @@ export function Journey({ projectId }: { projectId: string }) {
                 </div>
             </main>
         </div>
+    );
+}
+
+function ClaimReview({ data }: { data: Doc }) {
+    const resource = data.current.report,
+        claim = resource?.document;
+    if (!claim) return (
+        <section className='v-card v-claim-review'>
+            <Pill tone='neutral'>CLAIM NOT AVAILABLE</Pill>
+            <h2>No current claim to verify.</h2>
+            <p>Complete the reporting step to receive the reporter’s signed claim. Earlier versions remain in the project archive.</p>
+        </section>
+    );
+    const result = claim.statement?.object,
+        satellite = claim.claimKind === 'satellite-observation',
+        issuer = roles.find((r) => claim.issuer === party(r.id)),
+        method = claim.methodologyReference;
+    const observationDate = (value?: string) => value ? new Date(value).toLocaleDateString('en-IN', { dateStyle: 'medium', timeZone: 'UTC' }) : '—';
+    return (
+        <section className='v-card v-claim-review' aria-labelledby='claim-review-title'>
+            <div className='v-card-head'>
+                <Pill tone='neutral'>SUBMITTED CLAIM · v{resource.version}</Pill>
+                <span className='v-small'>Record status: {resource.status}</span>
+            </div>
+            <h2 id='claim-review-title'>{satellite ? 'Claimed clear-scene coverage' : 'Claimed net carbon removal'}</h2>
+            <p className='v-claim-result'>
+                {typeof result?.value === 'number' ? result.value.toLocaleString('en-IN', { maximumFractionDigits: 4 }) : '—'}
+                {' '}<span>{result?.unit || 'Result unavailable'}</span>
+            </p>
+            <p>{satellite ? 'Synthetic satellite observation; this is not a carbon-removal claim.' : 'Educational soil-carbon estimate from the monitored field study.'}</p>
+            <dl className='v-summary-list'>
+                <div><dt>Issued by</dt><dd>{issuer?.org || claim.issuer || 'Unspecified issuer'}</dd></div>
+                <div><dt>Field & area</dt><dd>{data.subject.name} · {claim.spatial?.areaHa ?? data.subject.area_ha} ha</dd></div>
+                <div><dt>Observation period</dt><dd>{observationDate(claim.temporal?.start)} → {observationDate(claim.temporal?.end)}</dd></div>
+                <div><dt>Methodology</dt><dd>{method?.name || method?.id || 'Not specified'}{method?.version ? ' · v' + method.version : ''}</dd></div>
+                <div><dt>Claim ID</dt><dd><code>{claim.id}</code></dd></div>
+                <div><dt>Signed document digest</dt><dd><code>{resource.digest}</code></dd></div>
+            </dl>
+            <p className='v-small'>This is the reporter’s submitted statement. Independent findings appear below after verification; an active record alone does not mean the claim passed.</p>
+            {!!claim.limitations?.length && <details><summary>Claim limitations</summary><ul>{claim.limitations.map((item: string) => <li key={item}>{item}</li>)}</ul></details>}
+            {result?.calculation && <details><summary>Reported calculation</summary><Json value={result.calculation} /></details>}
+            <details><summary>Full signed claim JSON</summary><Json value={claim} /></details>
+            <details><summary>Evidence references bound to this claim</summary><Json value={claim.evidence} /></details>
+            <a className='v-link-button' href='#verification-evidence'>Inspect source evidence & methodology ↓</a>
+        </section>
     );
 }
 
@@ -1064,6 +1071,7 @@ function ProtocolConsole({ data, selectedStep: initialStep, prepared }: { data: 
             <div className='v-console-title'>
                 <span className='v-dot' /> LIVE PROTOCOL CONSOLE <Pill tone='neutral'>POSTGRES</Pill>
             </div>
+            <p className='v-console-explainer'>One implementer workspace coordinates the journey. This demo simulates each provider’s signing identity and callback locally.</p>
             <select aria-label='Protocol action' value={selectedStep} onChange={(e) => setSelectedStep(e.target.value)}>
                 {journeySteps.map((s) => (
                     <option key={s.id} value={s.id}>
@@ -1206,14 +1214,14 @@ function AssetBrowser({ data, profile, showHistory = false }: { data: Doc; profi
     );
 }
 
-export function ProjectArchive({ projectId, initialProfile = 'implementer' }: { projectId: string; initialProfile?: RoleId }) {
+export function ProjectArchive({ projectId }: { projectId: string }) {
     const router = useRouter(),
         [tab, setTab] = useState('overview'),
         [version, setVersion] = useState(''),
-        [profile, setProfile] = useState<RoleId>(initialProfile),
         [reason, setReason] = useState('Updated monitoring evidence and renewed assurance.'),
         [revisionStep, setRevisionStep] = useState<Action>('monitor'),
         [busy, setBusy] = useState(false);
+    const profile = 'implementer';
     const { data, error, setError, refresh } = useProject(projectId, profile);
     const selected = data?.resources.find((r: Doc) => r.id === version) || data?.resources[0];
     async function revise() {
@@ -1241,7 +1249,7 @@ export function ProjectArchive({ projectId, initialProfile = 'implementer' }: { 
     const attestations = data.resources.filter((r: Doc) => r.action === 'attest');
     return (
         <>
-            <Topbar profile={profile} />
+            <Topbar />
             <main id='main' className='v-page'>
                 <Link href='/projects' className='v-back'>
                     ← All projects
@@ -1265,13 +1273,6 @@ export function ProjectArchive({ projectId, initialProfile = 'implementer' }: { 
                             {t === 'attestations' ? 'Attestations (' + attestations.length + ')' : t}
                         </button>
                     ))}
-                    <select aria-label='Browse as profile' value={profile} onChange={(e) => setProfile(e.target.value as RoleId)}>
-                        {roles.map((r) => (
-                            <option key={r.id} value={r.id}>
-                                {r.name}
-                            </option>
-                        ))}
-                    </select>
                 </nav>
                 {tab === 'overview' && (
                     <>

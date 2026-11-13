@@ -1,8 +1,8 @@
 # Open dMRV: protocol in practice
 
-A guided, Postgres-backed Carbon Markets demonstration of registration, monitoring, reporting, verification and attestation. Eight fictional actor profiles share **one Next.js application at http://localhost:3000**. Digital Twins is intentionally disabled for now.
+A guided, Postgres-backed Carbon Markets demonstration of registration, monitoring, reporting, verification and attestation. A single **project implementer workspace at http://localhost:3000** coordinates the journey. The fictional service actors retain separate protocol identities and signing keys behind the scenes. Digital Twins is intentionally disabled for now.
 
-The home page introduces the protocol and offers two ways to explore Carbon Markets: **Start the soil-carbon journey** or **Or browse existing projects**. The walkthrough explains the current role and task; the archive keeps projects, signed resource versions and protocol exchanges available outside that flow.
+The home page introduces the protocol and offers two ways to explore Carbon Markets: **Start the soil-carbon journey** or **Or browse existing projects**. The walkthrough explains the current project step and task; the archive keeps projects, signed resource versions and protocol exchanges available outside that flow.
 
 ## Setup and run
 
@@ -30,7 +30,7 @@ Then run:
 pnpm dev
 ```
 
-The launcher applies the idempotent database migration, registers eight demo parties and their public keys, imports earlier demo history when present, and starts Next.js plus the durable worker. The web server listens on `127.0.0.1:3000`; callbacks and evidence services use `APP_ORIGIN`. All role interfaces use that same port.
+The launcher applies the idempotent database migration, registers eight demo parties and their public keys, imports earlier demo history when present, and starts Next.js plus the durable worker. The web server listens on `127.0.0.1:3000`; callbacks and evidence services use `APP_ORIGIN`. The implementer interface and simulated provider endpoints use that same port.
 
 Useful commands:
 
@@ -54,31 +54,28 @@ pnpm start
 
 ## Guided project journey
 
-1. **Fieldkeeper — Choose land.** Name the project, select a mapped field and authorise use of its synthetic evidence. The land steward signs a `SubjectAuthorisation`.
-2. **Project Studio — Register.** Review the land, permission, methodology and assigned parties. Choose **Review & sign /register**, inspect the signed request in the console, then **Send POST /register**. Wait for `/on_register` before continuing.
-3. **Observatory — Monitor.** **Choose manual field study, satellite image capture, or both.** Review the selected soil samples and/or simulated cloud cover. `/monitor` produces a signed `EvidenceManifest` and signed references only to the selected evidence: soil CSV/practice record for manual study, a synthetic PNG/capture record for satellite capture, plus the common field boundary. Monitoring revisions restore the latest selected modalities, samples and cloud cover, including values from a failed monitoring submission. Background polling preserves edits in progress. Unsigned edits are not saved across a page reload.
-4. **Carbon Ledger — Report.** Retrieve the evidence and methodology. With manual study selected, leave the claim quantity blank to calculate from soil measurements, or enter a quantity to test the independent check. Satellite-only monitoring produces a clear-scene-coverage observation claim; entering a carbon quantity is rejected. `/report` produces a signed `Claim`.
-5. **Assurance Desk — Verify.** Retrieve original evidence, validate signatures and hashes, reproduce the calculation and assess the educational quality profile. `/verify` produces a separate signed `VerificationResult`. Manual-only review applies soil-sample checks without a satellite cloud requirement. Satellite review verifies the PNG fixture, product/source/snapshot links and cloud cover; satellite-only review reproduces the coverage percentage. The normal outcome is `verified_with_qualifications` because all observations and calculations are educational.
-6. **Attestation Office — Attest.** Bind the exact claim and accepted independent verification in a signed `Attestation`. The fictional authority retains all qualifications; it does not issue Gold Standard certification or carbon credits.
+1. **Choose land.** Name the project, select a mapped field and record permission to use its synthetic evidence. The demo records a `SubjectAuthorisation` signed by the land steward.
+2. **Register.** Review the land, permission, methodology and assigned providers. Choose **Review & sign /register**, inspect the signed request in the console, then **Send POST /register**. Wait for `/on_register` before continuing.
+3. **Monitor.** **Choose manual field study, satellite image capture, or both.** Review the selected soil samples and/or simulated cloud cover. The measurement provider returns a signed `EvidenceManifest` and signed references only to the selected evidence: soil CSV/practice record for manual study, a synthetic PNG/capture record for satellite capture, plus the common field boundary. Monitoring revisions restore the latest selected modalities, samples and cloud cover, including failed submissions. Background polling preserves edits in progress. Unsigned edits are not saved across a page reload.
+4. **Report.** Inspect the evidence and methodology before requesting a signed `Claim` from the reporter. With manual study selected, leave the claim quantity blank to calculate from soil measurements, or enter a quantity to test the independent check. Satellite-only monitoring produces a clear-scene-coverage observation claim; entering a carbon quantity is rejected.
+5. **Verify.** The **Submitted claim** panel displays the exact current claim’s result, unit, issuer, field, observation period, methodology, version, status and digest. Expand **Full signed claim JSON**, **Reported calculation**, **Claim limitations** or **Evidence references bound to this claim** to inspect the signed content directly, without opening the API console. **Inspect source evidence & methodology** jumps to the asset browser. Request independent verification to validate signatures and hashes, reproduce the result and assess the educational quality profile. Findings appear separately below the claim; an active claim record does not imply successful verification. Manual-only review applies soil-sample checks without a satellite cloud requirement. Satellite review verifies the PNG fixture, product/source/snapshot links and cloud cover; satellite-only review reproduces the coverage percentage. The normal outcome is `verified_with_qualifications` because all observations and calculations are educational.
+6. **Attest.** Request a signed endorsement binding the exact claim and accepted independent verification. The fictional attesting authority retains all qualifications; it does not issue Gold Standard certification or carbon credits.
 
 Each protocol step uses a request, immediate HTTP **202 ACK**, later signed `/on_*` callback and HTTP **200 callback ACK**. An ACK accepts the transport message; it does not mean the business action succeeded. Continue only after the callback is received and acknowledged.
 
 ## Browse projects and revisions
 
-**Browse projects** opens the portfolio. **Applications** opens the eight role entry points:
+**Browse projects** opens one implementer portfolio. The same application name, navigation and visual theme remain throughout the journey and archive. There is no role picker or separate provider application.
 
-| Application | Role | Path on localhost:3000 |
-|---|---|---|
-| Fieldkeeper | Land steward / Subject Controller | `/apps/controller` |
-| Project Studio | Project implementer | `/apps/implementer` |
-| Observatory | Measurement provider / evidence custodian | `/apps/measurement` |
-| Carbon Ledger | Reporting provider | `/apps/reporter` |
-| Assurance Desk | Independent assurance provider | `/apps/verifier` |
-| Standards Library | Standards reference and ontology mappings | `/apps/standards` |
-| Attestation Office | Fictional attesting authority | `/apps/attester` |
-| Trust Registry | Registered parties, agents and public keys | `/apps/registrar` |
+The portfolio also contains expandable **Methodology & ontology reference** and **Network participants & public keys** sections. The **Reference library** navigation link points to the former. Legacy `/carbon` and `/apps/{role}` bookmarks redirect to `/projects`; legacy project `?profile=` parameters no longer select a user interface.
 
-Open a project to use **Overview**, **Attestations**, **Versions**, **Protocol** or **Ontologies**. Switch **Browse as profile** to inspect another role's view. **Resume guided journey** returns to the current task; completed projects offer **Review the journey**.
+Open a project to use **Overview**, **Attestations**, **Versions**, **Protocol** or **Ontologies**. **Resume guided journey** returns to the current task; completed projects offer **Review the journey**.
+
+### One interface, distinct protocol participants
+
+This change unifies the user interface; it does not merge the land steward, implementer, measurement provider, reporter, verifier and attester into one signing identity. To exercise the existing local protocol, the demo still selects the responsible actor’s internal demo session when preparing an action, signs with that actor’s key and processes the durable asynchronous callback locally. The console exposes the actual sender, receiver and callback URI. The UI does not yet implement an implementer-only sender for every protocol request.
+
+In a future distributed deployment, the implementer can send a request to the chosen provider’s `/monitor`, `/report`, `/verify` or `/attest` endpoint with an authorised implementer callback URL. The provider returns an immediate ACK and later sends its signed result to that callback. The request sender, result issuer and callback sender are separate concepts. Separate provider applications, remote endpoint discovery and coordinator-sender authorisation remain future work; the current role checks and transport routing are unchanged.
 
 From Overview, choose **Start a new revision**, select its starting step, explain the reason and choose **Create a revision journey**. New signed objects retain `revisionOf`, `supersedes` and `revisionReason`. Earlier versions remain in Postgres; replacing an upstream resource suspends downstream current results until assurance is renewed.
 
@@ -204,12 +201,12 @@ pnpm test:integration
 
 It exercises registration, persisted callbacks, idempotency and database immutability. Without `TEST_DATABASE_URL`, it is skipped. Unit tests and a successful build do not establish complete browser, restart or distributed-worker validation.
 
-This remains a local educational application. All eight profiles are openly selectable; every project includes the same fixed parties. The backend holds all signing keys, and evidence resolution is restricted to the configured local origin. Real account authentication, independent organisational key custody, external custodians, private evidence storage and production HTTPS/OAuth policy are outside this demo. Cryptographic signatures establish protected content and signer identity, not scientific truth; independent cryptosuite interoperability has not been certified.
+This remains a local educational application. The internal demo-session API still permits selecting any of the eight actor identities; the UI no longer offers a profile selector. Every project includes the same fixed parties. The backend holds all signing keys, and evidence resolution is restricted to the configured local origin. Real account authentication, independent organisational key custody, external custodians, private evidence storage and production HTTPS/OAuth policy are outside this demo. Cryptographic signatures establish protected content and signer identity, not scientific truth; independent cryptosuite interoperability has not been certified.
 
 ## Source layout
 
 - `app/`: Next.js pages, protocol/API route handlers and styles.
-- `components/application.tsx`: home, project creation, role portfolios, journey, archive and protocol console.
+- `components/application.tsx`: home, project creation, implementer portfolio and reference library, journey, visible claim review, archive and protocol console.
 - `components/field-map.tsx`: Mapbox parcel view.
 - `lib/journey-state.ts`: monitoring draft restoration and step outcome presentation.
 - `lib/monitoring.ts`, `server/monitoring.ts`: typed observation requests, modality-specific evidence and profile checks.
