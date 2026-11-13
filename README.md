@@ -154,7 +154,9 @@ Until the first specification is published, this repository should not be treate
 
 ## Reference application
 
-The [Carbon Markets reference application](examples/carbon-market/README.md) demonstrates the five actions through eight role-specific interfaces, separately signed assurance objects, controlled evidence retrieval, Mapbox parcel selection and tamper exercises. The Digital Twins entry is reserved for a later example.
+The [Open dMRV example application](example-app/README.md) guides a Carbon Markets project through land authorisation, registration, monitoring, reporting, verification and attestation. Eight role interfaces share one Next.js application at `http://localhost:3000`, with Postgres persistence, durable signed callbacks, Mapbox Standard parcel maps, inline tamper exercises and a separate project/revision archive. Digital Twins is intentionally disabled for now.
+
+Use Node.js 24 or newer and pnpm. Configure `example-app/.env.local` with `DATABASE_URL` and a public Mapbox token, then run `pnpm install` and `pnpm dev` from `example-app/`. See the app README for database setup, the current routes, failure correction and the distinction between file-content hashes and signed asset references.
 
 The sample is educational and does not claim Gold Standard certification or normative protocol conformance. See its README for setup, methodology limits and test instructions.
 
